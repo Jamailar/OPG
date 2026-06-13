@@ -66,5 +66,6 @@ storage_file
 ## 当前实现
 
 - `platform_storage_providers` 保存平台对象存储 provider。
-- `ALIYUN_OSS` provider 已支持由管理员配置 endpoint、bucket、CDN、AK/SK。
-- `UploadService` 优先使用 DB 默认 provider，未配置时回退 env。
+- `ALIYUN_OSS`、`S3`、`R2` provider 已支持由管理员配置 endpoint、bucket、region、CDN、AK/SK。
+- 每个 bucket 保存为一条 provider 记录，可添加多个 bucket；`is_default` 全局只有一个，用于当前上传默认目标。
+- `UploadService` 优先使用 DB 默认 provider，未配置时才回退 env / 本地上传目录。

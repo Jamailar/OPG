@@ -4,6 +4,7 @@ import {
   PlatformRuntimeSettings,
   PlatformSmtpProviderItem,
   PlatformStorageProviderItem,
+  PlatformStorageProviderType,
   platformApi,
 } from '@/lib/api';
 import { pickApiErrorMessage } from '@/lib/api-response';
@@ -23,9 +24,12 @@ type RuntimeSettingsForm = {
 
 type StorageProviderForm = {
   id: string;
+  provider_type: PlatformStorageProviderType;
   name: string;
   endpoint: string;
   bucket: string;
+  region: string;
+  is_default: boolean;
   cdn_base_url: string;
   cdn_auth_enabled: boolean;
   cdn_auth_window_seconds: string;
@@ -60,9 +64,12 @@ const EMPTY_FORM: RuntimeSettingsForm = {
 
 const EMPTY_STORAGE_FORM: StorageProviderForm = {
   id: '',
+  provider_type: 'ALIYUN_OSS',
   name: 'Aliyun OSS',
   endpoint: '',
   bucket: '',
+  region: '',
+  is_default: true,
   cdn_base_url: '',
   cdn_auth_enabled: false,
   cdn_auth_window_seconds: '120',
@@ -105,9 +112,12 @@ function toStorageForm(provider?: PlatformStorageProviderItem | null): StoragePr
   if (!provider) return EMPTY_STORAGE_FORM;
   return {
     id: provider.id,
+    provider_type: provider.provider_type || 'ALIYUN_OSS',
     name: provider.name || 'Aliyun OSS',
     endpoint: provider.config?.endpoint || '',
     bucket: provider.config?.bucket || '',
+    region: provider.config?.region || '',
+    is_default: !!provider.is_default,
     cdn_base_url: provider.config?.cdn_base_url || '',
     cdn_auth_enabled: !!provider.config?.cdn_auth_enabled,
     cdn_auth_window_seconds: String(provider.config?.cdn_auth_window_seconds || 120),
@@ -229,6 +239,14 @@ export default function PlatformRuntimeSettingsPage() {
     setStorageForm((prev) => ({ ...prev, ...patch }));
   };
 
+  const resetStorageForm = (providerType: PlatformStorageProviderType = 'ALIYUN_OSS') => {
+    setStorageForm({
+      ...EMPTY_STORAGE_FORM,
+      provider_type: providerType,
+      name: providerType === 'ALIYUN_OSS' ? 'Aliyun OSS' : providerType === 'R2' ? 'Cloudflare R2' : 'S3 Storage',
+    });
+  };
+
   const updateSmtpForm = (patch: Partial<SmtpProviderForm>) => {
     setSmtpForm((prev) => ({ ...prev, ...patch }));
   };
@@ -268,13 +286,14 @@ export default function PlatformRuntimeSettingsPage() {
     setMessage(null);
     try {
       const payload = {
-        provider_type: 'ALIYUN_OSS' as const,
-        name: storageForm.name.trim() || 'Aliyun OSS',
+        provider_type: storageForm.provider_type,
+        name: storageForm.name.trim() || (storageForm.provider_type === 'ALIYUN_OSS' ? 'Aliyun OSS' : storageForm.provider_type),
         is_active: true,
-        is_default: true,
+        is_default: storageForm.is_default,
         config: {
           endpoint: storageForm.endpoint.trim(),
           bucket: storageForm.bucket.trim(),
+          region: storageForm.region.trim() || undefined,
           cdn_base_url: storageForm.cdn_base_url.trim() || undefined,
           cdn_auth_enabled: storageForm.cdn_auth_enabled,
           cdn_auth_window_seconds: Number(storageForm.cdn_auth_window_seconds || 120),
@@ -297,6 +316,21 @@ export default function PlatformRuntimeSettingsPage() {
       setMessage({ type: 'error', text: pickApiErrorMessage(error, error?.message || '保存对象存储失败') });
     } finally {
       setStorageSaving(false);
+    }
+  };
+
+  const deleteStorageProvider = async () => {
+    if (!storageForm.id) return;
+    setMessage(null);
+    try {
+      await platformApi.deleteStorageProvider(storageForm.id);
+      const storage = await platformApi.listStorageProviders();
+      const providers = storage.items || [];
+      setStorageProviders(providers);
+      setStorageForm(toStorageForm(providers.find((item) => item.is_default) || providers[0]));
+      setMessage({ type: 'success', text: '对象存储已删除' });
+    } catch (error: any) {
+      setMessage({ type: 'error', text: pickApiErrorMessage(error, '删除对象存储失败') });
     }
   };
 
@@ -495,17 +529,50 @@ export default function PlatformRuntimeSettingsPage() {
         <div className="platform-page-head">
           <div>
             <h1>对象存储</h1>
-            <p>{storageProviders.length ? `已配置 ${storageProviders.length} 个 provider` : 'Aliyun OSS'}</p>
+            <p>{storageProviders.length ? `已配置 ${storageProviders.length} 个 provider` : '未配置'}</p>
           </div>
-          <button className="btn btn-secondary" type="button" onClick={testStorageProvider} disabled={storageTesting || !storageForm.id}>
-            {storageTesting ? '测试中...' : '测试'}
-          </button>
+          <div className="platform-actions-row">
+            <button className="btn btn-secondary" type="button" onClick={() => resetStorageForm()} disabled={storageSaving}>
+              新建
+            </button>
+            <button className="btn btn-secondary" type="button" onClick={testStorageProvider} disabled={storageTesting || !storageForm.id}>
+              {storageTesting ? '测试中...' : '测试'}
+            </button>
+          </div>
         </div>
 
+        {storageProviders.length > 0 && (
+          <div className="platform-chip-row">
+            {storageProviders.map((provider) => (
+              <button
+                className={`platform-chip ${storageForm.id === provider.id ? 'active' : ''}`}
+                key={provider.id}
+                type="button"
+                onClick={() => setStorageForm(toStorageForm(provider))}
+              >
+                {provider.name}
+                {provider.is_default ? ' · 默认' : ''}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="platform-form-grid">
+          <div className="form-group">
+            <label>类型</label>
+            <select
+              value={storageForm.provider_type}
+              onChange={(event) => updateStorageForm({ provider_type: event.target.value as PlatformStorageProviderType })}
+            >
+              <option value="ALIYUN_OSS">Aliyun OSS</option>
+              <option value="S3">S3</option>
+              <option value="R2">Cloudflare R2</option>
+            </select>
+          </div>
           <Field label="名称" value={storageForm.name} onChange={(value) => updateStorageForm({ name: value })} />
-          <Field label="Endpoint" value={storageForm.endpoint} placeholder="oss-cn-shanghai.aliyuncs.com" onChange={(value) => updateStorageForm({ endpoint: value })} />
+          <Field label="Endpoint" value={storageForm.endpoint} placeholder={storageForm.provider_type === 'ALIYUN_OSS' ? 'oss-cn-shanghai.aliyuncs.com' : 'https://s3.example.com'} onChange={(value) => updateStorageForm({ endpoint: value })} />
           <Field label="Bucket" value={storageForm.bucket} onChange={(value) => updateStorageForm({ bucket: value })} />
+          <Field label="Region" value={storageForm.region} placeholder={storageForm.provider_type === 'R2' ? 'auto' : 'us-east-1'} onChange={(value) => updateStorageForm({ region: value })} />
           <Field label="CDN Base URL" value={storageForm.cdn_base_url} placeholder="https://cdn.example.com" onChange={(value) => updateStorageForm({ cdn_base_url: value })} />
           <Field label="Access Key ID" value={storageForm.access_key_id} onChange={(value) => updateStorageForm({ access_key_id: value })} />
           <Field label="Access Key Secret" value={storageForm.access_key_secret} onChange={(value) => updateStorageForm({ access_key_secret: value })} />
@@ -522,12 +589,27 @@ export default function PlatformRuntimeSettingsPage() {
               <option value="true">开启</option>
             </select>
           </div>
+          <div className="form-group">
+            <label>默认 Bucket</label>
+            <select
+              value={storageForm.is_default ? 'true' : 'false'}
+              onChange={(event) => updateStorageForm({ is_default: event.target.value === 'true' })}
+            >
+              <option value="true">是</option>
+              <option value="false">否</option>
+            </select>
+          </div>
         </div>
 
         <div className="platform-form-actions">
           <button className="btn btn-primary" type="submit" disabled={storageSaving || loading}>
             {storageSaving ? '保存中...' : '保存对象存储'}
           </button>
+          {storageForm.id && (
+            <button className="btn btn-secondary" type="button" onClick={deleteStorageProvider} disabled={storageSaving || loading}>
+              删除
+            </button>
+          )}
         </div>
       </form>
 

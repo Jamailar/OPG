@@ -251,8 +251,9 @@ config.sources:
 - 前端启动时会优先请求 `/runtime-config`，再回退到 `env.js` / `VITE_*`。
 - 管理后台已新增 `平台设置` 页面，用于维护 Runtime Settings。
 - `PLATFORM_SECRETS_KEY` 已成为新目标态主密钥名；旧 `OUTBOUND_PROXY_ENCRYPTION_KEY` 作为迁移兼容别名。
-- 新增 `platform_storage_providers` 表和对象存储 UI。Aliyun OSS 的 endpoint、bucket、CDN、AK/SK 已可由管理员配置；AK/SK 和 CDN auth key 使用 `PLATFORM_SECRETS_KEY` 加密入库。
-- `UploadService` 已优先读取 DB 默认对象存储 provider；没有 DB 配置时才回退旧 `ALIYUN_*` / `ALIYUN_OSS_*` env。
+- 新增 `platform_storage_providers` 表和对象存储 UI。Aliyun OSS、S3、Cloudflare R2 的 endpoint、bucket、region、CDN、AK/SK 已可由管理员配置；AK/SK 和 CDN auth key 使用 `PLATFORM_SECRETS_KEY` 加密入库。
+- 每个 bucket 保存为一条 provider 记录，可添加多个 bucket；`is_default` 全局只有一个，用于当前上传默认目标。
+- `UploadService` 已优先读取 DB 默认对象存储 provider；没有 DB 配置时才回退旧 `ALIYUN_*` / `ALIYUN_OSS_*` env 或本地上传目录。
 - 新增 `platform_api_keys` 表和集成密钥 UI。Feedback Admin API 已优先校验 DB 中带 `feedback:admin` scope 的 key；`FEEDBACK_ADMIN_API_KEY` 仅作为迁移 fallback。
 - 新增 `platform_smtp_providers` 表和 SMTP UI。邮箱验证码 SMTP 发送已优先读取 DB 默认 SMTP provider；没有 DB 配置时才回退旧 `SMTP_*` / `SENDER_*` env。
 - 支付服务已优先读取 `platform_payment_methods` 中的 Alipay / WeChat Pay 默认 provider；`ALIPAY_*`、`WECHAT_PAY_*` 仅作为迁移 fallback。支付 API 根地址、用户回跳地址、自动扣款调度和支付测试禁用开关已可通过 `platform_runtime_settings.payments_scheduler_json` 配置。

@@ -7,6 +7,8 @@ import * as path from 'path';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 import { PrismaClient } from '@prisma/client';
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import configuration from '../../config/configuration';
 import { PRISMA_CLIENT } from '../../config/database.module';
 import { RuntimeSettingsService } from '../runtime-settings/runtime-settings.service';
@@ -15,6 +17,7 @@ import { RuntimeSettingsService } from '../runtime-settings/runtime-settings.ser
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const OSS = require('ali-oss');
 const MAX_READABLE_URL_EXPIRES_SECONDS = 24 * 60 * 60;
+type ActiveStorageProviderType = 'ALIYUN_OSS' | 'S3' | 'R2' | 'LOCAL';
 
 @Injectable()
 export class UploadService {
@@ -28,6 +31,9 @@ export class UploadService {
   private ossAccessKeySecret: string;
   private ossTimeoutMs: number;
   private ossClient: any | null;
+  private s3Client: S3Client | null = null;
+  private s3Region = '';
+  private storageProviderType: ActiveStorageProviderType = 'LOCAL';
   private storageConfigExpiresAt = 0;
 
   constructor(
@@ -48,6 +54,9 @@ export class UploadService {
     this.ossAccessKeySecret = String(this.config.aliyun?.accessKeySecret || '').trim();
     this.ossTimeoutMs = Number(this.config.aliyun?.oss?.timeoutMs || 300_000);
     this.ossClient = this.buildOssClient();
+    if (this.ossClient) {
+      this.storageProviderType = 'ALIYUN_OSS';
+    }
   }
 
   async getPresignedUrl(
@@ -106,6 +115,13 @@ export class UploadService {
           'Content-Type': normalizedType,
         },
       });
+    } else if (this.s3Client) {
+      await this.s3Client.send(new PutObjectCommand({
+        Bucket: this.ossBucket,
+        Key: fileKey,
+        Body: fileBuffer,
+        ContentType: normalizedType,
+      }));
     } else {
       await this.persistLocalFile(fileKey, fileBuffer);
     }
@@ -134,6 +150,13 @@ export class UploadService {
           'Content-Type': normalizedType,
         },
       });
+    } else if (this.s3Client) {
+      await this.s3Client.send(new PutObjectCommand({
+        Bucket: this.ossBucket,
+        Key: normalizedKey,
+        Body: stream,
+        ContentType: normalizedType,
+      }));
     } else {
       await this.persistLocalStream(normalizedKey, stream);
     }
@@ -159,6 +182,19 @@ export class UploadService {
         const code = String(error?.code || '').toLowerCase();
         const status = Number(error?.status || 0);
         if (code.includes('nosuchkey') || status === 404) {
+          return { deleted: false, file_key: fileKey };
+        }
+        throw error;
+      }
+    }
+
+    if (this.s3Client) {
+      try {
+        await this.s3Client.send(new DeleteObjectCommand({ Bucket: this.ossBucket, Key: fileKey }));
+        return { deleted: true, file_key: fileKey };
+      } catch (error: any) {
+        const status = Number(error?.$metadata?.httpStatusCode || error?.statusCode || 0);
+        if (status === 404 || String(error?.name || '').toLowerCase().includes('nosuchkey')) {
           return { deleted: false, file_key: fileKey };
         }
         throw error;
@@ -210,6 +246,14 @@ export class UploadService {
       if (typeof signed === 'string' && signed) {
         return signed.startsWith('http://') ? `https://${signed.slice('http://'.length)}` : signed;
       }
+    }
+
+    if (this.s3Client) {
+      return getSignedUrl(
+        this.s3Client,
+        new GetObjectCommand({ Bucket: this.ossBucket, Key: fileKey }),
+        { expiresIn: Math.max(30, Math.min(MAX_READABLE_URL_EXPIRES_SECONDS, Math.floor(expiresSeconds || 120))) },
+      );
     }
 
     return this.buildFileUrl(fileKey);
@@ -310,6 +354,10 @@ export class UploadService {
       return `${this.cdnBaseUrl.replace(/\/+$/, '')}/${fileKey}`;
     }
     if (this.ossBucket && this.ossEndpoint) {
+      if (this.storageProviderType === 'S3' || this.storageProviderType === 'R2') {
+        const endpoint = this.normalizeEndpoint(this.ossEndpoint);
+        return `${endpoint.startsWith('http') ? endpoint : `https://${endpoint}`}/${this.ossBucket}/${fileKey}`;
+      }
       return `https://${this.ossBucket}.${this.ossEndpoint}/${fileKey}`;
     }
     return `/uploads/${fileKey}`;
@@ -371,6 +419,18 @@ export class UploadService {
       return signed;
     }
 
+    if (this.s3Client) {
+      return getSignedUrl(
+        this.s3Client,
+        new PutObjectCommand({
+          Bucket: this.ossBucket,
+          Key: fileKey,
+          ContentType: contentType,
+        }),
+        { expiresIn: 3600 },
+      );
+    }
+
     return `${fallbackFileUrl}?mock_presigned=1&content_type=${encodeURIComponent(contentType)}`;
   }
 
@@ -410,9 +470,15 @@ export class UploadService {
       }
 
       if (this.ossBucket && this.ossEndpoint) {
-        const expectedHost = `${this.ossBucket}.${this.ossEndpoint}`.toLowerCase();
-        if (parsed.host.toLowerCase() === expectedHost) {
-          return pathname;
+        if (this.storageProviderType === 'S3' || this.storageProviderType === 'R2') {
+          if (pathname.startsWith(`${this.ossBucket}/`)) {
+            return pathname.slice(this.ossBucket.length + 1);
+          }
+        } else {
+          const expectedHost = `${this.ossBucket}.${this.ossEndpoint}`.toLowerCase();
+          if (parsed.host.toLowerCase() === expectedHost) {
+            return pathname;
+          }
         }
       }
 
@@ -468,27 +534,59 @@ export class UploadService {
     });
   }
 
+  private buildS3Client(providerType: ActiveStorageProviderType) {
+    if (providerType !== 'S3' && providerType !== 'R2') {
+      return null;
+    }
+    const accessKeyId = this.ossAccessKeyId;
+    const secretAccessKey = this.ossAccessKeySecret;
+    if (!accessKeyId || !secretAccessKey || !this.ossBucket) {
+      return null;
+    }
+
+    const endpoint = this.ossEndpoint
+      ? (this.ossEndpoint.startsWith('http') ? this.ossEndpoint : `https://${this.ossEndpoint}`)
+      : undefined;
+    const region = this.s3Region || (providerType === 'R2' ? 'auto' : 'us-east-1');
+    return new S3Client({
+      region,
+      endpoint,
+      forcePathStyle: Boolean(endpoint),
+      credentials: {
+        accessKeyId,
+        secretAccessKey,
+      },
+    });
+  }
+
   private async refreshStorageProviderConfig(force = false) {
     if (!force && Date.now() < this.storageConfigExpiresAt) {
       return;
     }
 
     const provider = await this.runtimeSettingsService.resolveDefaultStorageProviderConfig().catch(() => null);
-    if (provider?.provider_type === 'ALIYUN_OSS') {
+    if (provider?.provider_type) {
       const nextBucket = String(provider.bucket || '').trim();
-      const nextEndpoint = this.normalizeEndpoint(provider.endpoint || '');
+      const nextEndpoint = provider.provider_type === 'ALIYUN_OSS'
+        ? this.normalizeEndpoint(provider.endpoint || '')
+        : String(provider.endpoint || '').trim().replace(/\/+$/g, '');
       const nextAccessKeyId = String(provider.access_key_id || '').trim();
       const nextAccessKeySecret = String(provider.access_key_secret || '').trim();
-      if (nextBucket && nextEndpoint && nextAccessKeyId && nextAccessKeySecret) {
+      const nextRegion = String(provider.region || '').trim();
+      if (nextBucket && nextAccessKeyId && nextAccessKeySecret && (provider.provider_type !== 'R2' || nextEndpoint)) {
         const changed =
+          this.storageProviderType !== provider.provider_type ||
           this.ossBucket !== nextBucket ||
           this.ossEndpoint !== nextEndpoint ||
           this.ossAccessKeyId !== nextAccessKeyId ||
-          this.ossAccessKeySecret !== nextAccessKeySecret;
+          this.ossAccessKeySecret !== nextAccessKeySecret ||
+          this.s3Region !== nextRegion;
+        this.storageProviderType = provider.provider_type;
         this.ossBucket = nextBucket;
         this.ossEndpoint = nextEndpoint;
         this.ossAccessKeyId = nextAccessKeyId;
         this.ossAccessKeySecret = nextAccessKeySecret;
+        this.s3Region = nextRegion;
         this.ossTimeoutMs = Number(provider.timeout_ms || 300_000);
         this.cdnBaseUrl = String(provider.cdn_base_url || '').trim();
         this.cdnAuthEnabled = Boolean(provider.cdn_auth_enabled);
@@ -497,8 +595,16 @@ export class UploadService {
         this.cdnAuthWindowSeconds = Number.isFinite(cdnWindow)
           ? Math.max(30, Math.min(MAX_READABLE_URL_EXPIRES_SECONDS, Math.floor(cdnWindow)))
           : 120;
-        if (changed || !this.ossClient) {
-          this.ossClient = this.buildOssClient();
+        if (provider.provider_type === 'ALIYUN_OSS') {
+          this.s3Client = null;
+          if (changed || !this.ossClient) {
+            this.ossClient = this.buildOssClient();
+          }
+        } else {
+          this.ossClient = null;
+          if (changed || !this.s3Client) {
+            this.s3Client = this.buildS3Client(provider.provider_type);
+          }
         }
         this.storageConfigExpiresAt = Date.now() + 30_000;
         return;

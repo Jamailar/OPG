@@ -16,6 +16,8 @@
     "@alicloud/ice20201109": "^6.19.0",
     "@anthropic-ai/sdk": "^0.90.0",
     "@apple/app-store-server-library": "^3.1.0",
+    "@aws-sdk/client-s3": "^3.1068.0",
+    "@aws-sdk/s3-request-presigner": "^3.1068.0",
     "@google/genai": "^1.48.0",
     "@nestjs/common": "^10.0.0",
     "@nestjs/config": "^3.0.0",

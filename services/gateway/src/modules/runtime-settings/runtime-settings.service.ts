@@ -275,8 +275,7 @@ export class RuntimeSettingsService implements OnModuleInit {
       await this.prisma.$executeRawUnsafe(
         `UPDATE platform_storage_providers
          SET is_default = false, updated_at = now()
-         WHERE provider_type = $1`,
-        providerType,
+         WHERE is_default = true`,
       );
     }
 
@@ -329,8 +328,7 @@ export class RuntimeSettingsService implements OnModuleInit {
       await this.prisma.$executeRawUnsafe(
         `UPDATE platform_storage_providers
          SET is_default = false, updated_at = now()
-         WHERE provider_type = $1 AND id <> $2::uuid`,
-        providerType,
+         WHERE id <> $1::uuid`,
         providerId,
       );
     }
@@ -375,20 +373,12 @@ export class RuntimeSettingsService implements OnModuleInit {
     if (!provider) {
       throw new BadRequestException('storage provider not found');
     }
-    if (provider.provider_type === 'ALIYUN_OSS') {
-      const missing = ['endpoint', 'bucket', 'access_key_id', 'access_key_secret'].filter((key) => !String((provider as any)[key] || '').trim());
-      return {
-        ok: missing.length === 0,
-        provider_type: provider.provider_type,
-        provider_id: provider.id,
-        message: missing.length === 0 ? '配置字段完整' : `缺少字段：${missing.join(', ')}`,
-      };
-    }
+    const missing = this.getStorageProviderMissingFields(provider.provider_type, provider);
     return {
-      ok: true,
+      ok: missing.length === 0,
       provider_type: provider.provider_type,
       provider_id: provider.id,
-      message: '配置字段完整',
+      message: missing.length === 0 ? '配置字段完整' : `缺少字段：${missing.join(', ')}`,
     };
   }
 
@@ -704,6 +694,22 @@ export class RuntimeSettingsService implements OnModuleInit {
     await this.prisma.$executeRawUnsafe(
       `CREATE UNIQUE INDEX IF NOT EXISTS idx_platform_storage_providers_default_unique
        ON platform_storage_providers(provider_type)
+       WHERE is_default = true`,
+    );
+    await this.prisma.$executeRawUnsafe(
+      `WITH ranked AS (
+         SELECT id, ROW_NUMBER() OVER (ORDER BY updated_at DESC, created_at DESC) AS rn
+         FROM platform_storage_providers
+         WHERE is_default = true
+       )
+       UPDATE platform_storage_providers p
+       SET is_default = false, updated_at = now()
+       FROM ranked r
+       WHERE p.id = r.id AND r.rn > 1`,
+    );
+    await this.prisma.$executeRawUnsafe(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_platform_storage_providers_global_default_unique
+       ON platform_storage_providers((is_default))
        WHERE is_default = true`,
     );
     await this.prisma.$executeRawUnsafe(
@@ -1197,19 +1203,31 @@ export class RuntimeSettingsService implements OnModuleInit {
   }
 
   private assertStorageProviderComplete(providerType: StorageProviderType, config: Record<string, unknown>, secrets: Record<string, unknown>) {
-    if (providerType !== 'ALIYUN_OSS') {
-      return;
-    }
-    const required = [
-      ['endpoint', config.endpoint],
-      ['bucket', config.bucket],
-      ['access_key_id', secrets.access_key_id],
-      ['access_key_secret', secrets.access_key_secret],
-    ];
-    const missing = required.filter(([, value]) => !String(value || '').trim()).map(([key]) => key);
+    const missing = this.getStorageProviderMissingFields(providerType, {
+      ...config,
+      ...secrets,
+    });
     if (missing.length > 0) {
       throw new BadRequestException(`storage provider missing required fields: ${missing.join(', ')}`);
     }
+  }
+
+  private getStorageProviderMissingFields(providerType: StorageProviderType, value: Record<string, unknown>) {
+    const required: Array<[string, unknown]> = [
+      ['bucket', value.bucket],
+      ['access_key_id', value.access_key_id],
+      ['access_key_secret', value.access_key_secret],
+    ];
+    if (providerType === 'ALIYUN_OSS') {
+      required.unshift(['endpoint', value.endpoint]);
+    }
+    if (providerType === 'S3') {
+      required.unshift(['region_or_endpoint', value.region || value.endpoint]);
+    }
+    if (providerType === 'R2') {
+      required.unshift(['endpoint', value.endpoint]);
+    }
+    return required.filter(([, fieldValue]) => !String(fieldValue || '').trim()).map(([key]) => key);
   }
 
   private normalizeSmtpProviderConfig(value: unknown) {
