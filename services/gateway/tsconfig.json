@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "ES2021",
+    "sourceMap": true,
+    "outDir": "./dist",
+    "baseUrl": "./",
+    "incremental": true,
+    "skipLibCheck": true,
+    "strictNullChecks": true,
+    "noImplicitAny": false,
+    "strictBindCallApply": false,
+    "forceConsistentCasingInFileNames": false,
+    "noFallthroughCasesInSwitch": false,
+    "strict": true,
+    "paths": {
+      "@/*": ["src/*"]
+    }
+  },
+  "include": [
+    "src/main.ts",
+    "src/app.module.ts",
+    "src/common/**/*.ts",
+    "src/config/**/*.ts",
+    "src/modules/auth/**/*.ts",
+    "src/modules/users/**/*.ts",
+    "src/modules/upload/**/*.ts",
+    "src/modules/discovery/**/*.ts",
+    "src/modules/platform-admin/**/*.ts",
+    "src/modules/runtime-settings/**/*.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

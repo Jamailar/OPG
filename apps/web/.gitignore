@@ -1,0 +1,53 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# next.js (已迁移到 Vite，保留以防回退)
+/.next/
+/out/
+
+# vite
+/dist
+/.vite
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# local env files
+.env*.local
+.env
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+
+# 确保 src/lib 目录被包含（不被忽略）
+!src/lib/
+!src/lib/**
+

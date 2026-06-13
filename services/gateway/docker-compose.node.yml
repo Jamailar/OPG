@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  opg-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: opg-gateway
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://opg:opg@postgres:5432/opg_gateway
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-change-me-to-a-long-random-secret}
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: gateway-postgres
+    environment:
+      - POSTGRES_USER=opg
+      - POSTGRES_PASSWORD=opg
+      - POSTGRES_DB=opg_gateway
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: gateway-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:

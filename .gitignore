@@ -1,0 +1,38 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Env and secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+.next/
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Runtime data
+*.sqlite
+*.sqlite3
+*.db
+uploads/
+tmp/
+temp/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+

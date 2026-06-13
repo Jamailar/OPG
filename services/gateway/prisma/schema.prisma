@@ -1,0 +1,434 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============== Enums ==============
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum AdminType {
+  SUPER_ADMIN
+  ADMIN
+}
+
+enum MembershipType {
+  FREE
+  PREMIUM
+}
+
+enum AppStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum AppDomainType {
+  BUSINESS_ADMIN
+  PLATFORM_ADMIN
+  API
+  USER_WEB
+}
+
+// ============== App & Tenant ==============
+
+model App {
+  id        String     @id @default(uuid())
+  slug      String     @unique
+  name      String
+  status    AppStatus  @default(ACTIVE)
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  domains   AppDomain[]
+  slugAliases AppSlugAlias[]
+  settings  AppSetting?
+  acquisitionSourceOptions AppAcquisitionSourceOption[]
+  acquisitionSources UserAcquisitionSource[]
+  acquisitionSourceEvents UserAcquisitionSourceEvent[]
+  users     User[]
+  authSessions AuthUserSession[]
+
+  @@map("apps")
+}
+
+model AppSlugAlias {
+  id        String   @id @default(uuid())
+  appId     String   @map("app_id")
+  slug      String
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  app       App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+
+  @@index([appId])
+  @@map("app_slug_aliases")
+}
+
+model AppDomain {
+  id          String         @id @default(uuid())
+  appId       String         @map("app_id")
+  domain      String         @unique
+  domainType  AppDomainType  @map("domain_type")
+  isPrimary   Boolean        @default(false) @map("is_primary")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  app         App            @relation(fields: [appId], references: [id], onDelete: Cascade)
+
+  @@index([appId])
+  @@map("app_domains")
+}
+
+model AppSetting {
+  id                     String   @id @default(uuid())
+  appId                 String   @unique @map("app_id")
+  appUrl                String?  @map("app_url")
+  brandName             String?  @map("brand_name")
+  senderName            String?  @map("sender_name")
+  senderNickname        String?  @map("sender_nickname")
+  wechatRedirectUri    String?  @map("wechat_redirect_uri")
+  alipayNotifyUrl      String?  @map("alipay_notify_url")
+  alipayAgreementNotifyUrl String? @map("alipay_agreement_notify_url")
+  extraJson             Json?    @map("extra_json")
+  notes                 String?
+
+  emailPrimaryColor     String?  @map("email_primary_color")
+  emailSecondaryColor   String?  @map("email_secondary_color")
+  emailGreeting         String?  @map("email_greeting")
+  emailCodeLabel        String?  @map("email_code_label")
+  emailExpireText       String?  @map("email_expire_text")
+  emailFooterText       String?  @map("email_footer_text")
+
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  app                   App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+
+  @@map("app_settings")
+}
+
+// ============== User & Auth ==============
+
+model User {
+  id              String         @id @default(uuid())
+  appId           String         @map("app_id")
+  email           String
+  hashedPassword  String         @map("hashed_password")
+  fullName        String?        @map("full_name")
+  displayName     String?        @map("display_name")
+  avatarUrl       String?        @map("avatar_url")
+  role            UserRole       @default(USER)
+  adminType       AdminType?     @map("admin_type")
+  isActive        Boolean        @default(true) @map("is_active")
+  isSuperuser     Boolean        @default(false) @map("is_superuser")
+
+  sessionToken    String?        @map("session_token")
+  currentRefreshTokenHash String?   @map("current_refresh_token_hash")
+  refreshTokenIssuedAt    DateTime? @map("refresh_token_issued_at")
+  refreshTokenLastUsedAt  DateTime? @map("refresh_token_last_used_at")
+
+  appleSub        String?        @map("apple_sub")
+  appleEmail      String?        @map("apple_email")
+  wechatOpenid    String?        @map("wechat_openid")
+  wechatUnionid   String?        @map("wechat_unionid")
+
+  phone           String?
+  phoneVerified   Boolean        @default(false) @map("phone_verified")
+
+  membershipType  MembershipType @default(FREE) @map("membership_type")
+  membershipExpiresAt DateTime?  @map("membership_expires_at")
+  accountType     String         @default("REGISTERED") @map("account_type")
+  primaryAuthProvider String?    @map("primary_auth_provider")
+  isAnonymous     Boolean        @default(false) @map("is_anonymous")
+
+  lastLoginAt     DateTime?      @map("last_login_at")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+  deletedAt       DateTime?      @map("deleted_at")
+  deactivatedAt   DateTime?      @map("deactivated_at")
+  deactivatedByUserId String?    @map("deactivated_by_user_id")
+  deactivationReason String?     @map("deactivation_reason")
+  deactivatedEmail String?       @map("deactivated_email")
+  deactivatedPhone String?       @map("deactivated_phone")
+
+  app             App            @relation(fields: [appId], references: [id])
+  authSessions    AuthUserSession[]
+  acquisitionSources UserAcquisitionSource[]
+  acquisitionSourceEvents UserAcquisitionSourceEvent[]
+
+  @@unique([email, appId])
+  @@index([appId])
+  @@index([phone])
+  @@index([appId, phone, deletedAt])
+  @@index([sessionToken])
+  @@index([appleSub])
+  @@index([wechatOpenid])
+  @@index([wechatUnionid])
+  @@index([deletedAt])
+  @@index([appId, deletedAt, isActive, createdAt])
+  @@index([appId, accountType, deletedAt])
+  @@map("users")
+}
+
+model AdminPagePermission {
+  id              String   @id @default(uuid())
+  appId           String   @map("app_id")
+  adminUserId     String   @map("admin_user_id")
+  allowedPages    Json     @default("[]") @map("allowed_pages")
+  createdByUserId String   @map("created_by_user_id")
+  updatedByUserId String   @map("updated_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([appId, adminUserId])
+  @@index([appId])
+  @@index([adminUserId])
+  @@index([createdByUserId])
+  @@index([updatedByUserId])
+  @@map("admin_page_permissions")
+}
+
+model AdminPermissionGroup {
+  id              String   @id @default(uuid())
+  appId           String   @map("app_id")
+  name            String   @db.VarChar(80)
+  description     String?
+  pagePermissions Json     @default("[]") @map("page_permissions")
+  createdByUserId String   @map("created_by_user_id")
+  updatedByUserId String   @map("updated_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([appId, name])
+  @@index([appId])
+  @@index([createdByUserId])
+  @@index([updatedByUserId])
+  @@map("admin_permission_groups")
+}
+
+model UserIdentity {
+  id              String   @id @default(uuid())
+  appId           String   @map("app_id")
+  userId          String   @map("user_id")
+  provider        String
+  providerSubject String   @map("provider_subject")
+  email           String?
+  isVerified      Boolean  @default(false) @map("is_verified")
+  metadataJson    Json     @default("{}") @map("metadata_json")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([appId, provider, providerSubject])
+  @@index([appId, userId, provider])
+  @@map("user_identities")
+}
+
+model IosAuthChallenge {
+  id          String    @id @default(uuid())
+  appId       String    @map("app_id")
+  challenge   String    @unique
+  purpose     String
+  keyId       String?   @map("key_id")
+  userId      String?   @map("user_id")
+  consumedAt  DateTime? @map("consumed_at")
+  expiresAt   DateTime  @map("expires_at")
+  ipAddress   String?   @map("ip_address")
+  userAgent   String?   @map("user_agent")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([appId, keyId, purpose, expiresAt])
+  @@map("ios_auth_challenges")
+}
+
+model IosAppAttestDevice {
+  id           String    @id @default(uuid())
+  appId        String    @map("app_id")
+  userId       String?   @map("user_id")
+  keyId        String    @map("key_id")
+  publicKey    String    @map("public_key")
+  signCount    BigInt    @default(0) @map("sign_count")
+  teamId       String    @map("team_id")
+  bundleId     String    @map("bundle_id")
+  environment  String    @default("PRODUCTION")
+  status       String    @default("ACTIVE")
+  lastSeenAt   DateTime? @map("last_seen_at")
+  revokedAt    DateTime? @map("revoked_at")
+  metadataJson Json      @default("{}") @map("metadata_json")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@unique([appId, keyId])
+  @@index([appId, userId, status])
+  @@map("ios_app_attest_devices")
+}
+
+model AppleIapTransaction {
+  id                    String    @id @default(uuid())
+  appId                 String    @map("app_id")
+  userId                String?   @map("user_id")
+  transactionId         String    @unique @map("transaction_id")
+  originalTransactionId String    @map("original_transaction_id")
+  webOrderLineItemId    String?   @map("web_order_line_item_id")
+  productId             String?   @map("product_id")
+  appleProductId        String    @map("apple_product_id")
+  environment           String    @default("PRODUCTION")
+  status                String    @default("ACTIVE")
+  purchaseDate          DateTime? @map("purchase_date")
+  expiresDate           DateTime? @map("expires_date")
+  revocationDate        DateTime? @map("revocation_date")
+  signedTransactionInfo String?   @map("signed_transaction_info")
+  signedRenewalInfo     String?   @map("signed_renewal_info")
+  rawJson               Json      @default("{}") @map("raw_json")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  @@index([appId, originalTransactionId])
+  @@index([appId, userId, status, expiresDate])
+  @@map("apple_iap_transactions")
+}
+
+model AppleIapNotification {
+  id                    String    @id @default(uuid())
+  appId                 String?   @map("app_id")
+  notificationUuid      String    @unique @map("notification_uuid")
+  notificationType      String    @map("notification_type")
+  subtype               String?
+  transactionId         String?   @map("transaction_id")
+  originalTransactionId String?   @map("original_transaction_id")
+  environment           String?
+  signedPayload         String    @map("signed_payload")
+  decodedPayload        Json      @default("{}") @map("decoded_payload")
+  processedAt           DateTime? @map("processed_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+
+  @@index([appId, originalTransactionId, createdAt])
+  @@map("apple_iap_notifications")
+}
+
+model UserEntitlement {
+  id                    String    @id @default(uuid())
+  appId                 String    @map("app_id")
+  userId                String    @map("user_id")
+  source                String
+  productCode           String    @map("product_code")
+  productId             String?   @map("product_id")
+  externalProductId     String?   @map("external_product_id")
+  originalTransactionId String?   @map("original_transaction_id")
+  status                String    @default("ACTIVE")
+  startsAt              DateTime? @map("starts_at")
+  expiresAt             DateTime? @map("expires_at")
+  metadataJson          Json      @default("{}") @map("metadata_json")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  @@index([appId, userId, status, expiresAt])
+  @@map("user_entitlements")
+}
+
+model AuthUserSession {
+  id                  String    @id @default(uuid())
+  userId              String    @map("user_id")
+  appId               String    @map("app_id")
+  sessionTokenHash    String    @map("session_token_hash")
+  refreshTokenHash    String    @map("refresh_token_hash")
+  provider            String?
+  userAgent           String?   @map("user_agent")
+  ipAddress           String?   @map("ip_address")
+  issuedAt            DateTime  @default(now()) @map("issued_at")
+  lastUsedAt          DateTime  @default(now()) @map("last_used_at")
+  expiresAt           DateTime  @map("expires_at")
+  revokedAt           DateTime? @map("revoked_at")
+  replacedBySessionId String?   @map("replaced_by_session_id")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  app                 App       @relation(fields: [appId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt, lastUsedAt])
+  @@index([appId, userId, revokedAt])
+  @@index([sessionTokenHash])
+  @@index([refreshTokenHash])
+  @@map("auth_user_sessions")
+}
+
+// ============== Acquisition Attribution ==============
+
+model AppAcquisitionSourceOption {
+  id            String   @id @default(uuid())
+  appId         String   @map("app_id")
+  key           String
+  label         String
+  isActive      Boolean  @default(true) @map("is_active")
+  allowFreeText Boolean  @default(false) @map("allow_free_text")
+  sortOrder     Int      @default(0) @map("sort_order")
+  metadataJson  Json     @default("{}") @map("metadata_json")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  app           App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+
+  @@unique([appId, key])
+  @@index([appId, isActive, sortOrder])
+  @@map("app_acquisition_source_options")
+}
+
+model UserAcquisitionSource {
+  id                  String   @id @default(uuid())
+  appId               String   @map("app_id")
+  userId              String   @map("user_id")
+  sourceKey           String   @map("source_key")
+  sourceLabelSnapshot String   @map("source_label_snapshot")
+  freeText            String?  @map("free_text")
+  utmSource           String?  @map("utm_source")
+  utmMedium           String?  @map("utm_medium")
+  utmCampaign         String?  @map("utm_campaign")
+  referrer            String?
+  landingPath         String?  @map("landing_path")
+  sessionId           String?  @map("session_id")
+  submittedAt         DateTime @default(now()) @map("submitted_at")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  app                 App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([appId, userId])
+  @@index([appId, sourceKey, submittedAt])
+  @@index([appId, submittedAt])
+  @@map("user_acquisition_sources")
+}
+
+model UserAcquisitionSourceEvent {
+  id                  String   @id @default(uuid())
+  appId               String   @map("app_id")
+  userId              String   @map("user_id")
+  sourceKey           String   @map("source_key")
+  sourceLabelSnapshot String   @map("source_label_snapshot")
+  freeText            String?  @map("free_text")
+  utmSource           String?  @map("utm_source")
+  utmMedium           String?  @map("utm_medium")
+  utmCampaign         String?  @map("utm_campaign")
+  referrer            String?
+  landingPath         String?  @map("landing_path")
+  sessionId           String?  @map("session_id")
+  ipHash              String?  @map("ip_hash")
+  userAgent           String?  @map("user_agent")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  app                 App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([appId, sourceKey, createdAt])
+  @@index([appId, userId, createdAt])
+  @@index([appId, createdAt])
+  @@map("user_acquisition_source_events")
+}
