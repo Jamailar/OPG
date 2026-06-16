@@ -181,9 +181,11 @@ async function bootstrap() {
   app.use(text({ type: ['application/xml', 'text/xml'], limit: jsonBodyLimit }));
   app.use(createAppSlugAliasMiddleware(app.get<PrismaClient>(PRISMA_CLIENT)));
 
-  app.getHttpAdapter().get('/', (_request, response) => {
-    response.type('text/plain').send(appVersion);
-  });
+  if (!bundledWeb) {
+    app.getHttpAdapter().get('/', (_request, response) => {
+      response.type('text/plain').send(appVersion);
+    });
+  }
   const healthHandler = (_request: any, response: any) => {
     response.type('text/plain').send('OK');
   };
