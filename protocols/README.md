@@ -11,6 +11,7 @@
 - [Realtime Events](./realtime-events.md)：事件 envelope、channel 命名、订阅鉴权和推送策略。
 - [Usage Ledger](./usage-ledger.md)：AI、视频、存储、消息等成本事件和账单聚合。
 - [Runtime Settings](./runtime-settings.md)：环境变量极简化、管理员 UI 配置和密钥加密入库。
+- [Developer SDK](./developer-sdk.md)：SDK、CLI、Codex MCP、manifest 和开发者接入合同。
 
 ## 1. 前后端 API 协议
 

@@ -17,6 +17,7 @@ import { EmailDeliveryModule } from './modules/email-delivery/email-delivery.mod
 import { OutboundProxyModule } from './modules/outbound-proxy/outbound-proxy.module';
 import { AcquisitionModule } from './modules/acquisition/acquisition.module';
 import { RuntimeSettingsModule } from './modules/runtime-settings/runtime-settings.module';
+import { DeveloperSdkModule } from './modules/developer-sdk/developer-sdk.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
@@ -41,6 +42,7 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
     OutboundProxyModule,
     AcquisitionModule,
     RuntimeSettingsModule,
+    DeveloperSdkModule,
   ],
   providers: [
     {

@@ -16,12 +16,16 @@
 ├── protocols/
 │   ├── README.md            # 协议、契约和工程约束
 │   ├── app-registry.md      # app、环境、租户和 API key
+│   ├── developer-sdk.md     # SDK、CLI 和 Codex MCP 接入合同
 │   ├── permissions.md       # 用户、团队、角色和资源授权
 │   ├── storage.md           # bucket、file、signed URL 和 quota
 │   ├── jobs.md              # 长任务、触发器、重试和幂等
 │   ├── realtime-events.md   # 实时事件和订阅鉴权
 │   ├── usage-ledger.md      # 用量、成本和账本事件
 │   └── runtime-settings.md  # 极简环境变量和管理员配置
+├── packages/
+│   ├── sdk/                 # @opg/sdk 应用运行时客户端
+│   └── cli/                 # @opg/cli 初始化与 Codex MCP server
 ├── LICENSE
 ├── package.json
 └── README.md
@@ -41,6 +45,20 @@ npm run web:dev
 ```bash
 npm install --prefix services/gateway
 npm run gateway:dev
+```
+
+SDK / CLI：
+
+```bash
+npm run sdk:build
+npm run cli:build
+```
+
+用户项目接入：
+
+```bash
+npx -y @opg/cli init --base-url https://api.example.com --app your-app
+npx -y @opg/cli codex install --base-url https://api.example.com --app your-app
 ```
 
 真实密钥不进入仓库。需要环境变量时，从各子项目的 `.env.example` 复制成本地 `.env`。

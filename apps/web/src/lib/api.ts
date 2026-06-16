@@ -270,6 +270,63 @@ class ApiClient {
 
 export const apiClient = new ApiClient();
 
+export interface OpgSdkManifest {
+  manifest_version: string;
+  app: {
+    id: string;
+    slug: string;
+    name: string;
+    status: string;
+    api_base_url: string;
+    bare_api_base_url: string;
+  };
+  sdk: {
+    package: string;
+    cli_package: string;
+    min_node_version: string;
+  };
+  auth: Record<string, unknown>;
+  capabilities: Record<string, unknown>;
+  routes: Record<string, string>;
+  codex: {
+    install_command: string;
+    mcp_server_command: string;
+    mcp_server_args: string[];
+    environment: string[];
+  };
+}
+
+export interface OpgSdkSmokeResult {
+  ok: boolean;
+  app: OpgSdkManifest['app'];
+  actor: Record<string, unknown> | null;
+  checks: Array<{ key: string; ok: boolean; message: string }>;
+  next: Record<string, string>;
+}
+
+export interface AppApiKeyItem {
+  id: string;
+  name: string;
+  key_prefix: string;
+  key_last4: string;
+  is_active: boolean;
+  created_at: string;
+  last_used_at?: string | null;
+}
+
+export interface AppApiKeyCreateResult {
+  created?: boolean;
+  app_slug: string;
+  key?: string;
+  api_key?: AppApiKeyItem;
+  id?: string;
+  name?: string;
+  key_prefix?: string;
+  key_last4?: string;
+  created_at?: string;
+  message?: string;
+}
+
 // API 方法
 export const authApi = {
   // 注册
@@ -2268,6 +2325,42 @@ export interface PlatformAcquisitionSummary {
 }
 
 export const platformApi = {
+  getDeveloperSdkManifest: async (appSlug: string): Promise<OpgSdkManifest> => {
+    const base = runtimeContext.apiBaseUrl.replace(/\/+$/, '');
+    const response = await apiClient.getClient().get(`${base}/${appSlug}/v1/sdk/manifest`);
+    return response.data?.data || response.data;
+  },
+
+  getDeveloperSdkExamples: async (appSlug: string, target: 'node' | 'react' | 'codex' = 'node') => {
+    const base = runtimeContext.apiBaseUrl.replace(/\/+$/, '');
+    const response = await apiClient.getClient().get(`${base}/${appSlug}/v1/sdk/examples`, { params: { target } });
+    return response.data?.data || response.data;
+  },
+
+  runDeveloperSdkSmokeTest: async (appSlug: string): Promise<OpgSdkSmokeResult> => {
+    const base = runtimeContext.apiBaseUrl.replace(/\/+$/, '');
+    const response = await apiClient.getClient().post(`${base}/${appSlug}/v1/sdk/smoke-test`, {});
+    return response.data?.data || response.data;
+  },
+
+  listMyAppApiKeys: async (appSlug: string): Promise<{ items: AppApiKeyItem[] }> => {
+    const base = runtimeContext.apiBaseUrl.replace(/\/+$/, '');
+    const response = await apiClient.getClient().get(`${base}/${appSlug}/v1/users/me/api-keys`);
+    return response.data?.data || response.data;
+  },
+
+  createMyAppApiKey: async (appSlug: string, name: string): Promise<AppApiKeyCreateResult> => {
+    const base = runtimeContext.apiBaseUrl.replace(/\/+$/, '');
+    const response = await apiClient.getClient().post(`${base}/${appSlug}/v1/users/me/api-keys`, { name });
+    return response.data?.data || response.data;
+  },
+
+  revokeMyAppApiKey: async (appSlug: string, keyId: string) => {
+    const base = runtimeContext.apiBaseUrl.replace(/\/+$/, '');
+    const response = await apiClient.getClient().post(`${base}/${appSlug}/v1/users/me/api-keys/${keyId}/revoke`);
+    return response.data?.data || response.data;
+  },
+
   listEmailCloudflareAccounts: async () => {
     const response = await apiClient.getClient().get('/platform-admin/email/cloudflare/accounts');
     return response.data as { items: PlatformEmailCfAccountItem[] };

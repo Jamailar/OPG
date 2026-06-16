@@ -8444,6 +8444,19 @@ table tbody tr:hover td {
   color: #f3f3f3;
 }
 
+.platform-code-block {
+  margin: 12px 0 0;
+  padding: 12px;
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  background: #111111;
+  color: #f3f3f3;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
 .ac-login-page {
   padding: 24px;
   background: radial-gradient(circle at 50% 0%, #ffffff 0%, #f7f7f7 55%, #efefef 100%);

@@ -5,16 +5,19 @@
   "description": "一人集团系统：帮助一人公司快速构建 app 后端集群的前后端分离 monorepo。",
   "workspaces": [
     "apps/web",
-    "services/gateway"
+    "services/gateway",
+    "packages/sdk",
+    "packages/cli"
   ],
   "scripts": {
     "web:dev": "npm --prefix apps/web run dev",
     "web:build": "npm --prefix apps/web run build",
     "gateway:dev": "npm --prefix services/gateway run start:dev",
-    "gateway:build": "npm --prefix services/gateway run build"
+    "gateway:build": "npm --prefix services/gateway run build",
+    "sdk:build": "npm --prefix packages/sdk run build",
+    "cli:build": "npm --prefix packages/cli run build"
   },
   "engines": {
     "node": ">=22"
   }
 }
-

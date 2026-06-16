@@ -1,0 +1,26 @@
+{
+  "name": "@opg/sdk",
+  "version": "0.1.0",
+  "description": "OPG Developer SDK for AI apps, agents, uploads, async video tasks, and usage inspection.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0"
+  }
+}

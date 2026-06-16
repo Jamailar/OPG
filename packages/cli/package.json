@@ -1,0 +1,29 @@
+{
+  "name": "@opg/cli",
+  "version": "0.1.0",
+  "description": "OPG CLI and Codex MCP server for AI app backend development.",
+  "type": "module",
+  "bin": {
+    "opg": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "NODE_OPTIONS=--max-old-space-size=8192 tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.1",
+    "@opg/sdk": "0.1.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
