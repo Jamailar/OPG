@@ -177,6 +177,11 @@ async function loadRemoteRuntimeConfig(): Promise<void> {
       const apiBaseUrl = String(data.api_base_url || '').trim().replace(/\/+$/, '');
       if (apiBaseUrl) {
         API_BASE_URL = apiBaseUrl;
+      } else {
+        const responseOrigin = new URL(response.url || url, window.location.href).origin;
+        if (responseOrigin === window.location.origin) {
+          API_BASE_URL = window.location.origin;
+        }
       }
       const platformSlug = String(data.platform_app_slug || '').trim();
       if (platformSlug) {
