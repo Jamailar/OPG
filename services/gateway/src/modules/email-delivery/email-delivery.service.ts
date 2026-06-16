@@ -862,7 +862,6 @@ export class EmailDeliveryService implements OnModuleInit {
       .update(
         process.env.PLATFORM_SECRETS_KEY
           || process.env.OUTBOUND_PROXY_ENCRYPTION_KEY
-          || process.env.EMAIL_SECRET_KEY
           || process.env.JWT_SECRET_KEY
           || 'email-delivery',
       )

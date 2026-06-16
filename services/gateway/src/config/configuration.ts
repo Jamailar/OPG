@@ -159,11 +159,8 @@ export default registerAs('app', (): AppConfig => {
     'connect_timeout',
     process.env.DATABASE_CONNECT_TIMEOUT_SECONDS || process.env.PRISMA_CONNECT_TIMEOUT_SECONDS,
   );
-  const refreshInactivityDays = parsePositiveInt(process.env.JWT_REFRESH_INACTIVITY_DAYS, 30, 1, 3650);
-  const refreshAbsoluteDays = Math.max(
-    refreshInactivityDays,
-    parsePositiveInt(process.env.JWT_REFRESH_ABSOLUTE_DAYS, 180, refreshInactivityDays, 3650),
-  );
+  const refreshInactivityDays = 30;
+  const refreshAbsoluteDays = 180;
 
   return {
     port,
@@ -181,7 +178,7 @@ export default registerAs('app', (): AppConfig => {
     },
     jwt: {
       secret: jwtSecret,
-      expiresIn: process.env.JWT_EXPIRES_IN || '24h',
+      expiresIn: '24h',
       refreshInactivityDays,
       refreshAbsoluteDays,
     },
@@ -189,66 +186,56 @@ export default registerAs('app', (): AppConfig => {
       origins: parseCorsOrigins(),
     },
     smtp: {
-      host: process.env.SMTP_SERVER || 'smtp.qiye.aliyun.com',
-      port: parseInt(process.env.SMTP_PORT || '465', 10),
-      user: process.env.SENDER_EMAIL,
-      password: process.env.SENDER_PASSWORD,
+      host: '',
+      port: 465,
+      user: undefined,
+      password: undefined,
     },
     aliyun: {
-      accessKeyId: process.env.ALIYUN_ACCESS_KEY_ID || process.env.ALIYUN_OSS_ACCESS_KEY_ID,
-      accessKeySecret: process.env.ALIYUN_ACCESS_KEY_SECRET || process.env.ALIYUN_OSS_ACCESS_KEY_SECRET,
+      accessKeyId: undefined,
+      accessKeySecret: undefined,
       oss: {
-        endpoint: process.env.ALIYUN_OSS_ENDPOINT,
-        bucket: process.env.ALIYUN_OSS_BUCKET,
-        timeoutMs: Math.max(30_000, Math.min(900_000, parseInt(process.env.ALIYUN_OSS_TIMEOUT_MS || '300000', 10) || 300_000)),
-        cdnBaseUrl: process.env.ALIYUN_OSS_CDN_BASE_URL,
-        cdnAuthEnabled: String(process.env.ALIYUN_OSS_CDN_AUTH_ENABLED || '').trim().toLowerCase() === 'true',
-        cdnAuthKey: process.env.ALIYUN_OSS_CDN_AUTH_KEY || '',
-        cdnAuthWindowSeconds: Math.max(30, Math.min(3600, parseInt(process.env.ALIYUN_OSS_CDN_AUTH_WINDOW_SECONDS || '120', 10) || 120)),
+        endpoint: undefined,
+        bucket: undefined,
+        timeoutMs: 300_000,
+        cdnBaseUrl: undefined,
+        cdnAuthEnabled: false,
+        cdnAuthKey: '',
+        cdnAuthWindowSeconds: 120,
       },
     },
     alipay: {
-      enabled: process.env.ALIPAY_ENABLED === 'true',
-      sandboxDebug: process.env.ALIPAY_SANDBOX_DEBUG === 'true',
-      gatewayUrl: process.env.ALIPAY_GATEWAY_URL || '',
-      appId: process.env.ALIPAY_APP_ID,
-      privateKey: process.env.ALIPAY_APP_PRIVATE_KEY,
-      alipayPublicKey: process.env.ALIPAY_ALIPAY_PUBLIC_KEY,
-      signType: process.env.ALIPAY_SIGN_TYPE || 'RSA2',
-      notifyUrl: process.env.ALIPAY_NOTIFY_URL,
-      returnUrl: process.env.ALIPAY_RETURN_URL,
-      agreementNotifyUrl: process.env.ALIPAY_AGREEMENT_NOTIFY_URL,
-      agreementReturnUrl: process.env.ALIPAY_AGREEMENT_RETURN_URL,
+      enabled: false,
+      sandboxDebug: false,
+      gatewayUrl: '',
+      appId: undefined,
+      privateKey: undefined,
+      alipayPublicKey: undefined,
+      signType: 'RSA2',
+      notifyUrl: undefined,
+      returnUrl: undefined,
+      agreementNotifyUrl: undefined,
+      agreementReturnUrl: undefined,
     },
     wechatPay: {
-      enabled: process.env.WECHAT_PAY_ENABLED === 'true',
-      gatewayUrl: process.env.WECHAT_PAY_GATEWAY_URL || 'https://api.mch.weixin.qq.com',
-      appId: process.env.WECHAT_PAY_APP_ID,
-      mchId: process.env.WECHAT_PAY_MCH_ID,
-      apiKey: process.env.WECHAT_PAY_API_KEY,
-      notifyUrl: process.env.WECHAT_PAY_NOTIFY_URL,
+      enabled: false,
+      gatewayUrl: 'https://api.mch.weixin.qq.com',
+      appId: undefined,
+      mchId: undefined,
+      apiKey: undefined,
+      notifyUrl: undefined,
     },
     payments: {
-      autoDeductionEnabled: String(process.env.PAYMENTS_AUTO_DEDUCTION_ENABLED || '').trim().toLowerCase() === 'true',
-      autoDeductionIntervalMs: parsePositiveInt(
-        process.env.PAYMENTS_AUTO_DEDUCTION_INTERVAL_MS,
-        5 * 60 * 1000,
-        60 * 1000,
-        24 * 60 * 60 * 1000,
-      ),
-      autoDeductionBatchSize: parsePositiveInt(process.env.PAYMENTS_AUTO_DEDUCTION_BATCH_SIZE, 50, 1, 500),
+      autoDeductionEnabled: false,
+      autoDeductionIntervalMs: 5 * 60 * 1000,
+      autoDeductionBatchSize: 50,
     },
     apple: {
-      rootCertificatesPem: process.env.APPLE_ROOT_CERTIFICATES_PEM || '',
+      rootCertificatesPem: '',
     },
     wechatAuth: {
-      redirectUri:
-        process.env.WECHAT_AUTH_REDIRECT_URI
-        || process.env.WECHAT_REDIRECT_URI
-        || '',
-      allowedRedirectHosts: parseCommaSeparatedList(
-        process.env.WECHAT_AUTH_ALLOWED_REDIRECT_HOSTS || process.env.WECHAT_AUTH_ALLOWED_CALLBACK_HOSTS,
-      ).map((item) => item.toLowerCase()),
+      redirectUri: '',
+      allowedRedirectHosts: [],
     },
   };
 });

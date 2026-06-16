@@ -215,6 +215,12 @@ export class RuntimeSettingsService implements OnModuleInit {
     return this.normalizeStringArray(row?.cors_origins_json);
   }
 
+  async getSessionPolicy() {
+    await this.ensureSchema();
+    const row = await this.findSingletonRow();
+    return asPlainObject(row?.session_policy_json);
+  }
+
   async getAiGatewayTuning() {
     await this.ensureSchema();
     const row = await this.findSingletonRow();
@@ -1105,6 +1111,9 @@ export class RuntimeSettingsService implements OnModuleInit {
       ['usage_queue_size', 1, 100_000],
       ['image_upstream_timeout_ms', 30_000, 3_600_000],
       ['video_upstream_timeout_ms', 60_000, 7_200_000],
+      ['minimax_voice_api_cache_ms', 0, 86_400_000],
+      ['minimax_tts_key_min_interval_ms', 0, 60_000],
+      ['openrouter_stt_max_audio_bytes', 1024, 125_829_120],
     ];
     for (const [field, min, max] of integerFields) {
       this.copyBoundedInteger(raw, next, field, min, max);
@@ -1121,6 +1130,10 @@ export class RuntimeSettingsService implements OnModuleInit {
       next.trace_log =
         raw.trace_log === true || String(raw.trace_log).trim() === '1';
     }
+    if (raw.disable_vercel_sdk_forward !== undefined) {
+      next.disable_vercel_sdk_forward =
+        raw.disable_vercel_sdk_forward === true || String(raw.disable_vercel_sdk_forward).trim() === '1';
+    }
     if (raw.redis_prefix !== undefined) {
       const prefix = String(raw.redis_prefix || '').trim().replace(/[^a-zA-Z0-9:_-]/g, '');
       if (prefix) {
@@ -1131,6 +1144,12 @@ export class RuntimeSettingsService implements OnModuleInit {
       const modelKey = String(raw.voice_clone_model_key || '').trim();
       if (modelKey) {
         next.voice_clone_model_key = modelKey.slice(0, 255);
+      }
+    }
+    if (raw.minimax_voice_catalog_path !== undefined) {
+      const catalogPath = String(raw.minimax_voice_catalog_path || '').trim();
+      if (catalogPath) {
+        next.minimax_voice_catalog_path = catalogPath.slice(0, 1024);
       }
     }
     if (raw.usage_queue_overflow !== undefined) {

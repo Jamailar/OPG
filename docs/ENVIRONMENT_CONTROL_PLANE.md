@@ -72,23 +72,25 @@ VITE_API_BASE_URL=https://api.example.com
 | `CORS_ORIGINS` | 冷启动进入后台 | 可在 UI 配置后弃用 |
 | `DB_AUTO_MIGRATE` | 镜像启动行为 | 可留给运维 |
 | `HTTP_*_LIMIT` | 进程级请求体上限 | 可留给运维 |
+| `GATEWAY_ACCESS_LOG` / `GATEWAY_SLOW_REQUEST_MS` | 进程日志采样与慢请求阈值 | 可留给运维 |
+| `API_NODE_AI_DEBUG_AUTH_*` | 本地/预发调试守卫 | 仅限非生产排障 |
 
 ## 必须迁入管理员 UI 的内容
 
 | 能力 | UI 位置 | DB 真值 | 当前 env/fallback |
 | --- | --- | --- | --- |
-| AI provider / 模型 | AI 源与模型 | `ai_sources`、`ai_model_source_routes` | 大部分已不走 env |
-| 支付方式 | 平台设置 / 支付方式 | `platform_payment_methods.config_json` | `ALIPAY_*`、`WECHAT_PAY_*` |
-| 支付 URL | 平台设置 / 域名与回调 | `platform_runtime_settings` 或 `app_settings.extra_json` | `API_BASE_URL`、`USER_WEB_BASE_URL` |
-| 对象存储 | 平台设置 / 对象存储 | `platform_storage_providers.config_json` + `secret_json_encrypted` | `ALIYUN_*`、`ALIYUN_OSS_*` |
-| 邮件 | 平台设置 / 邮件服务 | `platform_smtp_providers.config_json` + `secret_json_encrypted` | `SMTP_*`、`SENDER_*` |
-| OAuth | 平台设置 / 登录方式 | `platform_runtime_settings.oauth_settings_json`，后续可拆 `oauth_provider_clients` | `WECHAT_AUTH_*` 等 |
-| 集成默认行为 | 平台设置 / 集成配置 | `platform_runtime_settings.integration_settings_json` | `FEEDBACK_ADMIN_API_ACTOR_USER_ID` |
-| Apple IAP / Login | 平台设置 / Apple | `apple_login_credentials` + `platform_payment_methods.config_json` | `APPLE_ROOT_CERTIFICATES_PEM` |
-| 反馈/集成 API key | 平台设置 / 集成密钥 | `platform_api_keys` | `FEEDBACK_ADMIN_API_KEY` |
+| AI provider / 模型 | AI 源与模型 | `ai_sources`、`ai_model_source_routes` | 无业务 env |
+| 支付方式 | 平台设置 / 支付方式 | `platform_payment_methods.config_json` | 旧 `ALIPAY_*`、`WECHAT_PAY_*` 已停止读取 |
+| 支付 URL | 平台设置 / 域名与回调 | `platform_runtime_settings` 或 `app_settings.extra_json` | 旧 `API_BASE_URL`、`USER_WEB_BASE_URL` 已停止读取 |
+| 对象存储 | 平台设置 / 对象存储 | `platform_storage_providers.config_json` + `secret_json_encrypted` | 旧 `ALIYUN_*`、`ALIYUN_OSS_*` 已停止读取 |
+| 邮件 | 平台设置 / 邮件服务 | `platform_smtp_providers.config_json` + `secret_json_encrypted` | 旧 `SMTP_*`、`SENDER_*` 已停止读取 |
+| OAuth | 平台设置 / 登录方式 | `platform_runtime_settings.oauth_settings_json`，后续可拆 `oauth_provider_clients` | 旧 `WECHAT_AUTH_*` 已停止读取 |
+| 集成默认行为 | 平台设置 / 集成配置 | `platform_runtime_settings.integration_settings_json` | 旧 `FEEDBACK_ADMIN_API_ACTOR_USER_ID` 已停止读取 |
+| Apple IAP / Login | 平台设置 / Apple | `apple_login_credentials` + `platform_payment_methods.config_json` | 旧 `APPLE_ROOT_CERTIFICATES_PEM` 已停止读取 |
+| 反馈/集成 API key | 平台设置 / 集成密钥 | `platform_api_keys` | 旧 `FEEDBACK_ADMIN_API_KEY` 已停止读取 |
 | CORS | 平台设置 / 域名与安全 | `platform_runtime_settings.cors_origins` | `CORS_*` |
-| AI 调优 | 平台设置 / AI 高级设置 | `ai_runtime_settings` | `AI_GATEWAY_*` |
-| 支付调度 | 平台设置 / 支付任务 | `platform_runtime_settings` | `PAYMENTS_AUTO_DEDUCTION_*` |
+| AI 调优 | 平台设置 / AI 高级设置 | `platform_runtime_settings.ai_gateway_tuning_json` | 旧 `AI_GATEWAY_*`、Minimax/OpenRouter 调优 env 已停止读取 |
+| 支付调度 | 平台设置 / 支付任务 | `platform_runtime_settings.payments_scheduler_json` | 旧 `PAYMENTS_AUTO_DEDUCTION_*` 已停止读取 |
 
 ## 管理员 UI 信息架构
 
@@ -219,9 +221,9 @@ updatedAt
 
 ## 后端实现要求
 
-1. 所有模块禁止直接读取 `process.env`，只能读取统一配置服务。
+1. 业务模块禁止直接读取业务类 `process.env`，只能读取统一配置服务、runtime settings 或 provider 表。
 2. 配置加载顺序：bootstrap env -> DB runtime settings -> provider config -> code default。
-3. 生产环境中，如果 DB 已配置对应 provider，必须忽略同类 env fallback。
+3. 生产环境中，支付、存储、SMTP、OAuth、AI 调优和集成密钥不提供同类 env fallback。
 4. 启动时输出配置来源摘要：
 
 ```text
@@ -253,16 +255,16 @@ config.sources:
 - `PLATFORM_SECRETS_KEY` 已成为新目标态主密钥名；旧 `OUTBOUND_PROXY_ENCRYPTION_KEY` 作为迁移兼容别名。
 - 新增 `platform_storage_providers` 表和对象存储 UI。Aliyun OSS、S3、Cloudflare R2 的 endpoint、bucket、region、CDN、AK/SK 已可由管理员配置；AK/SK 和 CDN auth key 使用 `PLATFORM_SECRETS_KEY` 加密入库。
 - 每个 bucket 保存为一条 provider 记录，可添加多个 bucket；`is_default` 全局只有一个，用于当前上传默认目标。
-- `UploadService` 已优先读取 DB 默认对象存储 provider；没有 DB 配置时才回退旧 `ALIYUN_*` / `ALIYUN_OSS_*` env 或本地上传目录。
-- 新增 `platform_api_keys` 表和集成密钥 UI。Feedback Admin API 已优先校验 DB 中带 `feedback:admin` scope 的 key；`FEEDBACK_ADMIN_API_KEY` 仅作为迁移 fallback。
-- 新增 `platform_smtp_providers` 表和 SMTP UI。邮箱验证码 SMTP 发送已优先读取 DB 默认 SMTP provider；没有 DB 配置时才回退旧 `SMTP_*` / `SENDER_*` env。
-- 支付服务已优先读取 `platform_payment_methods` 中的 Alipay / WeChat Pay 默认 provider；`ALIPAY_*`、`WECHAT_PAY_*` 仅作为迁移 fallback。支付 API 根地址、用户回跳地址、自动扣款调度和支付测试禁用开关已可通过 `platform_runtime_settings.payments_scheduler_json` 配置。
-- AI Gateway 节流、候选 sticky、上游超时、请求/响应体限制、用量队列和 trace log 已优先读取 `platform_runtime_settings.ai_gateway_tuning_json`；`AI_GATEWAY_*` 仅作为迁移 fallback。
-- AI 语音克隆默认模型已优先读取 `platform_runtime_settings.ai_gateway_tuning_json.voice_clone_model_key`；`AI_VOICE_CLONE_MODEL_KEY` 仅作为迁移 fallback。
-- WeChat OAuth redirect URI / allowed hosts 已可通过 `platform_runtime_settings.oauth_settings_json` 配置；`WECHAT_AUTH_*` 仅作为迁移 fallback。
-- Apple IAP 已可从 `platform_payment_methods` 的 `APPLE_IAP` provider 读取 root certificates PEM；`APPLE_ROOT_CERTIFICATES_PEM` 仅作为迁移 fallback。
-- Feedback Admin API 默认 actor 已可通过 `platform_runtime_settings.integration_settings_json` 配置；`FEEDBACK_ADMIN_API_ACTOR_USER_ID` 仅作为迁移 fallback。
-- Email Delivery 加密和退订签名已优先使用 `PLATFORM_SECRETS_KEY` 派生；`EMAIL_SECRET_KEY` 仅作为迁移 fallback，不进入新环境模板。
+- `UploadService` 已读取 DB 默认对象存储 provider；没有 DB 配置时只回退本地上传目录，不再读取旧 `ALIYUN_*` / `ALIYUN_OSS_*` env。
+- 新增 `platform_api_keys` 表和集成密钥 UI。Feedback Admin API 只校验 DB 中带 `feedback:admin` scope 的 key，不再读取 `FEEDBACK_ADMIN_API_KEY`。
+- 新增 `platform_smtp_providers` 表和 SMTP UI。邮箱验证码 SMTP 发送读取 DB 默认 SMTP provider，不再读取旧 `SMTP_*` / `SENDER_*` env。
+- 支付服务读取 `platform_payment_methods` 中的 Alipay / WeChat Pay 默认 provider，不再读取 `ALIPAY_*`、`WECHAT_PAY_*`。支付 API 根地址、用户回跳地址、自动扣款调度、本地回跳许可和支付测试禁用开关通过 `platform_runtime_settings.payments_scheduler_json` 配置。
+- AI Gateway 节流、候选 sticky、上游超时、请求/响应体限制、用量队列、trace log、Minimax voice catalog/cache、Minimax TTS key 间隔、OpenRouter STT 音频上限和 Vercel SDK 转发开关读取 `platform_runtime_settings.ai_gateway_tuning_json`，不再读取旧 `AI_GATEWAY_*` 或专项调优 env。
+- AI 语音克隆默认模型读取 `platform_runtime_settings.ai_gateway_tuning_json.voice_clone_model_key`，不再读取 `AI_VOICE_CLONE_MODEL_KEY`。
+- WeChat OAuth redirect URI / allowed hosts 通过 `platform_runtime_settings.oauth_settings_json` 配置，不再读取 `WECHAT_AUTH_*`。
+- Apple IAP 已可从 `platform_payment_methods` 的 `APPLE_IAP` provider 读取 root certificates PEM，不再读取 `APPLE_ROOT_CERTIFICATES_PEM`。
+- Feedback Admin API 默认 actor 通过 `platform_runtime_settings.integration_settings_json` 配置，不再读取 `FEEDBACK_ADMIN_API_ACTOR_USER_ID`。
+- Email Delivery 加密和退订签名使用 `PLATFORM_SECRETS_KEY` / `OUTBOUND_PROXY_ENCRYPTION_KEY` / `JWT_SECRET_KEY` 派生，不再读取 `EMAIL_SECRET_KEY`。
 
 `payments_scheduler_json` 支持字段：
 
@@ -307,6 +309,11 @@ config.sources:
   "image_upstream_timeout_ms": 600000,
   "video_upstream_timeout_ms": 1200000,
   "voice_clone_model_key": "minimax-voice-clone",
+  "minimax_voice_catalog_path": "/app/Doc/minimax/音色列表.json",
+  "minimax_voice_api_cache_ms": 21600000,
+  "minimax_tts_key_min_interval_ms": 3200,
+  "openrouter_stt_max_audio_bytes": 26214400,
+  "disable_vercel_sdk_forward": false,
   "trace_log": false
 }
 ```
@@ -344,10 +351,10 @@ config.sources:
 | 3 | 对象存储 provider Web 化 | 删除 `ALIYUN_*` 大块 env |
 | 4 | Feedback API key Web 化 | 删除 `FEEDBACK_ADMIN_API_KEY` |
 | 5 | SMTP provider Web 化 | 删除 `SMTP_*`、`SENDER_*` |
-| 6 | 支付 provider 完全以 DB 为准 | 已 DB 优先读取；下一步删除 `ALIPAY_*`、`WECHAT_PAY_*` fallback |
-| 7 | OAuth/Apple Web 化收口 | WeChat redirect 和 Apple IAP root cert 已 DB 优先读取 |
-| 8 | AI 调优从 env 迁到高级设置 | 已 DB 优先读取；下一步删除 `AI_GATEWAY_*` fallback |
-| 9 | 集成默认行为 Web 化 | Feedback Admin 默认 actor 已 DB 优先读取；下一步删除 `FEEDBACK_ADMIN_API_ACTOR_USER_ID` fallback |
+| 6 | 支付 provider 完全以 DB 为准 | 已删除 `ALIPAY_*`、`WECHAT_PAY_*` fallback |
+| 7 | OAuth/Apple Web 化收口 | WeChat redirect 和 Apple IAP root cert 已删除 env fallback |
+| 8 | AI 调优从 env 迁到高级设置 | 已删除 `AI_GATEWAY_*` 及专项调优 env fallback |
+| 9 | 集成默认行为 Web 化 | Feedback Admin 默认 actor 已删除 env fallback |
 | 10 | CI 禁止新增散落 `process.env` | 防止回退 |
 
 ## 验收标准

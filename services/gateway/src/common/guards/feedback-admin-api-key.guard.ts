@@ -1,5 +1,4 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
-import { timingSafeEqual } from 'crypto';
 import { RuntimeSettingsService } from '../../modules/runtime-settings/runtime-settings.service';
 
 @Injectable()
@@ -15,10 +14,7 @@ export class FeedbackAdminApiKeyGuard implements CanActivate {
 
     const dbValid = await this.runtimeSettingsService.validatePlatformApiKey(provided, 'feedback:admin').catch(() => false);
     if (!dbValid) {
-      const expected = String(process.env.FEEDBACK_ADMIN_API_KEY || '').trim();
-      if (!expected || !this.secureEquals(provided, expected)) {
-        throw new UnauthorizedException('invalid feedback admin api key');
-      }
+      throw new UnauthorizedException('invalid feedback admin api key');
     }
 
     req.feedbackAdminApiKey = true;
@@ -34,14 +30,5 @@ export class FeedbackAdminApiKeyGuard implements CanActivate {
     const authorization = String(req?.headers?.authorization || '').trim();
     const match = authorization.match(/^Bearer\s+(.+)$/i);
     return match?.[1]?.trim() || '';
-  }
-
-  private secureEquals(a: string, b: string): boolean {
-    const left = Buffer.from(a);
-    const right = Buffer.from(b);
-    if (left.length !== right.length) {
-      return false;
-    }
-    return timingSafeEqual(left, right);
   }
 }

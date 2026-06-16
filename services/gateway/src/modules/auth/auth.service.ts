@@ -501,16 +501,17 @@ export class AuthService implements OnModuleInit {
       const refreshIssuedAt = authSession?.issued_at || user.refreshTokenIssuedAt || this.dateFromUnixSeconds(payload.iat) || now;
       const refreshLastUsedAt = authSession?.last_used_at || user.refreshTokenLastUsedAt || refreshIssuedAt;
       const refreshSessionStartedAt = this.dateFromTokenTime(payload.refreshSessionStartedAt) || refreshIssuedAt;
+      const sessionPolicy = await this.resolveSessionPolicy();
 
       if (authSession || user.currentRefreshTokenHash) {
         const expectedRefreshTokenHash = authSession?.refresh_token_hash || user.currentRefreshTokenHash;
         if (expectedRefreshTokenHash !== currentRefreshTokenHash) {
           throw new UnauthorizedException('Refresh token has been rotated');
         }
-        if (now.getTime() - refreshLastUsedAt.getTime() > this.getRefreshTokenInactivityMs()) {
+        if (now.getTime() - refreshLastUsedAt.getTime() > this.getRefreshTokenInactivityMs(sessionPolicy)) {
           throw new UnauthorizedException('Refresh token expired from inactivity');
         }
-        if (now.getTime() - refreshSessionStartedAt.getTime() > this.getRefreshTokenAbsoluteMs()) {
+        if (now.getTime() - refreshSessionStartedAt.getTime() > this.getRefreshTokenAbsoluteMs(sessionPolicy)) {
           throw new UnauthorizedException('Refresh token expired');
         }
       }
@@ -3499,6 +3500,7 @@ export class AuthService implements OnModuleInit {
     const issuedAt = new Date();
     const sessionId = options.sessionId || randomUUID();
     const sessionStartedAt = options.refreshSessionStartedAt || issuedAt;
+    const sessionPolicy = await this.resolveSessionPolicy();
     let inviteCode: string | null = this.getCachedInviteCode(user.appId, user.id);
     try {
       if (!inviteCode) {
@@ -3529,7 +3531,7 @@ export class AuthService implements OnModuleInit {
     };
     const refreshToken = this.jwtService.sign(refreshPayload, {
       secret: this.config.jwt.secret,
-      expiresIn: `${this.config.jwt.refreshAbsoluteDays}d`,
+      expiresIn: `${sessionPolicy.refreshAbsoluteDays}d`,
     });
     await this.upsertAuthUserSession({
       sessionId,
@@ -3537,7 +3539,7 @@ export class AuthService implements OnModuleInit {
       sessionToken,
       refreshToken,
       issuedAt,
-      expiresAt: new Date(sessionStartedAt.getTime() + this.getRefreshTokenAbsoluteMs()),
+      expiresAt: new Date(sessionStartedAt.getTime() + this.getRefreshTokenAbsoluteMs(sessionPolicy)),
       provider: options.provider,
       userAgent: options.userAgent,
       ipAddress: options.ipAddress,
@@ -3554,7 +3556,7 @@ export class AuthService implements OnModuleInit {
     return {
       access_token: this.jwtService.sign(accessPayload, {
         secret: this.config.jwt.secret,
-        expiresIn: this.config.jwt.expiresIn,
+        expiresIn: `${sessionPolicy.accessTokenTtlMinutes}m`,
       }),
       refresh_token: refreshToken,
       token_type: 'bearer',
@@ -3682,12 +3684,34 @@ export class AuthService implements OnModuleInit {
     return this.dateFromUnixSeconds(value);
   }
 
-  private getRefreshTokenInactivityMs(): number {
-    return this.config.jwt.refreshInactivityDays * 24 * 60 * 60 * 1000;
+  private async resolveSessionPolicy() {
+    const raw = await this.runtimeSettingsService.getSessionPolicy().catch(() => ({} as Record<string, unknown>));
+    const refreshInactivityDays = this.boundedInteger(raw.refresh_inactivity_days, 30, 1, 3650);
+    const refreshAbsoluteDays = Math.max(
+      refreshInactivityDays,
+      this.boundedInteger(raw.refresh_absolute_days, 180, refreshInactivityDays, 3650),
+    );
+    return {
+      accessTokenTtlMinutes: this.boundedInteger(raw.access_token_ttl_minutes, 24 * 60, 5, 24 * 60),
+      refreshInactivityDays,
+      refreshAbsoluteDays,
+    };
   }
 
-  private getRefreshTokenAbsoluteMs(): number {
-    return this.config.jwt.refreshAbsoluteDays * 24 * 60 * 60 * 1000;
+  private boundedInteger(value: unknown, fallback: number, min: number, max: number): number {
+    const parsed = Number.parseInt(String(value ?? '').trim(), 10);
+    if (!Number.isFinite(parsed)) {
+      return fallback;
+    }
+    return Math.min(max, Math.max(min, parsed));
+  }
+
+  private getRefreshTokenInactivityMs(policy: { refreshInactivityDays: number }): number {
+    return policy.refreshInactivityDays * 24 * 60 * 60 * 1000;
+  }
+
+  private getRefreshTokenAbsoluteMs(policy: { refreshAbsoluteDays: number }): number {
+    return policy.refreshAbsoluteDays * 24 * 60 * 60 * 1000;
   }
 
   private async validateSessionUser(payload: AuthTokenPayload, expectedAppSlug?: string) {

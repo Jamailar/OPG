@@ -276,6 +276,24 @@ AppID/Secret 在 DB 按租户配置。
 | `AI_VOICE_CLONE_MODEL_KEY` | — | 默认语音克隆模型 key |
 | `MINIMAX_VOICE_CATALOG_PATH` | — | MiniMax 音色表 JSON 路径 |
 
+### 观测、健康与审计
+
+AI 网关稳定性数据不依赖额外环境变量，服务启动时会确保以下持久化结构存在：
+
+| 表 | 用途 |
+| --- | --- |
+| `ai_provider_health` | 记录 source / model / route / capability / api key 维度的健康状态、连续失败、冷却时间和平均延迟 |
+| `ai_gateway_request_events` | 记录一次转发请求的关键阶段：`selected`、`upstream_response`、`upstream_error`、`usage_recorded`、`points_charged` 等 |
+| `ai_audit_events` | 记录 AI source、model、tenant route、默认模型等配置变更的审计哈希和元数据 |
+
+管理端查询接口：
+
+| 接口 | 说明 |
+| --- | --- |
+| `GET /api/v1/:app_slug/platform-admin/ai/gateway/provider-health` | 查看供应商和 key 粒度健康状态 |
+| `GET /api/v1/:app_slug/platform-admin/ai/gateway/request-events` | 按 `request_id` / `usage_reference_id` 追踪请求事件 |
+| `GET /api/v1/:app_slug/platform-admin/ai/audit-events` | 查看 AI 配置审计事件 |
+
 ### 开发调试（生产忽略）
 
 | 变量 | 说明 |

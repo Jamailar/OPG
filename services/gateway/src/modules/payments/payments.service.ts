@@ -4277,7 +4277,6 @@ export class PaymentsService implements OnModuleInit {
       String(extra.api_url || ''),
       String(appSettings?.api_domain || ''),
       this.runtimePaymentSettings.apiBaseUrl,
-      String(process.env.API_BASE_URL || ''),
     ];
     for (const candidate of candidates) {
       const normalized = this.normalizeBaseUrl(candidate);
@@ -4291,7 +4290,6 @@ export class PaymentsService implements OnModuleInit {
   private resolveUserWebBaseUrl(appSlug: string, appSettings: AppSettingRow | null) {
     const allowLocal = this.allowLocalReturnUrl();
     const extra = this.asConfigMap(appSettings?.extra_json);
-    const useGlobalFallbacks = appSlug === this.config.app.defaultSlug;
     const candidates = [
       String(extra.payment_return_base_url || ''),
       String(extra.user_web_base_url || ''),
@@ -4300,13 +4298,6 @@ export class PaymentsService implements OnModuleInit {
       String(appSettings?.app_url || ''),
       this.runtimePaymentSettings.paymentReturnBaseUrl,
       this.runtimePaymentSettings.userWebBaseUrl,
-      ...(useGlobalFallbacks
-        ? [
-            String(process.env.USER_WEB_BASE_URL || ''),
-            String(process.env.PAYMENT_RETURN_BASE_URL || ''),
-            String(process.env.WEB_APP_URL || ''),
-          ]
-        : []),
     ];
     for (const candidate of candidates) {
       const normalized = this.normalizeBaseUrl(candidate);
@@ -4373,9 +4364,7 @@ export class PaymentsService implements OnModuleInit {
     if (this.runtimePaymentSettings.allowLocalReturnUrl !== null) {
       return this.runtimePaymentSettings.allowLocalReturnUrl;
     }
-    const env = String(process.env.NODE_ENV || '').trim().toLowerCase();
-    const flag = String(process.env.ALLOW_LOCAL_RETURN_URL || '').trim().toLowerCase();
-    return env === 'development' || env === 'dev' || flag === 'true' || flag === '1';
+    return false;
   }
 
   private isAcceptableReturnUrl(rawUrl: string, allowLocal: boolean) {
@@ -5519,10 +5508,7 @@ export class PaymentsService implements OnModuleInit {
   }
 
   private assertAdminTestAllowed() {
-    const envDisabled = String(process.env.PAYMENTS_ADMIN_TEST_DISABLED || '')
-      .trim()
-      .toLowerCase();
-    const disabled = this.runtimePaymentSettings.adminTestDisabled ?? (envDisabled === 'true' || envDisabled === '1');
+    const disabled = this.runtimePaymentSettings.adminTestDisabled === true;
     if (disabled) {
       throw new ForbiddenException('支付测试接口已禁用');
     }
