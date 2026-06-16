@@ -15,11 +15,17 @@ type AiUpstreamTuning = {
   requestBodyMaxBytes: number;
   responseTextMaxBytes: number;
 };
+const DEFAULT_AI_UPSTREAM_TUNING: AiUpstreamTuning = {
+  defaultHeaderTimeoutMs: 60000,
+  streamHeaderTimeoutMs: 30000,
+  requestBodyMaxBytes: 20 * 1024 * 1024,
+  responseTextMaxBytes: 4 * 1024 * 1024,
+};
 
 @Injectable()
 export class AiUpstreamClientService {
   private readonly logger = new Logger(AiUpstreamClientService.name);
-  private tuning = this.readDefaultTuning();
+  private tuning = DEFAULT_AI_UPSTREAM_TUNING;
   private tuningLoadedAt = 0;
   private tuningLoading: Promise<AiUpstreamTuning> | null = null;
 
@@ -138,23 +144,6 @@ export class AiUpstreamClientService {
     }
   }
 
-  private readPositiveInt(name: string, fallback: number, min: number, max: number): number {
-    const parsed = Number.parseInt(String(process.env[name] || '').trim(), 10);
-    if (!Number.isFinite(parsed)) {
-      return fallback;
-    }
-    return Math.min(max, Math.max(min, parsed));
-  }
-
-  private readDefaultTuning(): AiUpstreamTuning {
-    return {
-      defaultHeaderTimeoutMs: this.readPositiveInt('AI_GATEWAY_UPSTREAM_HEADER_TIMEOUT_MS', 60000, 1000, 10 * 60 * 1000),
-      streamHeaderTimeoutMs: this.readPositiveInt('AI_GATEWAY_UPSTREAM_STREAM_HEADER_TIMEOUT_MS', 30000, 1000, 10 * 60 * 1000),
-      requestBodyMaxBytes: this.readPositiveInt('AI_GATEWAY_REQUEST_BODY_MAX_BYTES', 20 * 1024 * 1024, 1024, 200 * 1024 * 1024),
-      responseTextMaxBytes: this.readPositiveInt('AI_GATEWAY_RESPONSE_TEXT_MAX_BYTES', 4 * 1024 * 1024, 1024, 100 * 1024 * 1024),
-    };
-  }
-
   private async getTuning() {
     const now = Date.now();
     if (this.tuningLoadedAt > 0 && now - this.tuningLoadedAt < 15000) {
@@ -169,7 +158,7 @@ export class AiUpstreamClientService {
   }
 
   private async loadTuning(): Promise<AiUpstreamTuning> {
-    const defaults = this.readDefaultTuning();
+    const defaults = DEFAULT_AI_UPSTREAM_TUNING;
     try {
       const raw = await this.runtimeSettingsService.getAiGatewayTuning();
       this.tuning = {
@@ -179,7 +168,7 @@ export class AiUpstreamClientService {
         responseTextMaxBytes: this.numberValue(raw.response_text_max_bytes, defaults.responseTextMaxBytes, 1024, 100 * 1024 * 1024),
       };
     } catch (error: any) {
-      this.logger.warn(`AI upstream tuning load failed; using env fallback: ${error?.message || error}`);
+      this.logger.warn(`AI upstream tuning load failed; using defaults: ${error?.message || error}`);
       this.tuning = defaults;
     }
     this.tuningLoadedAt = Date.now();

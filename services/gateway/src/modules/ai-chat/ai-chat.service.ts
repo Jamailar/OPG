@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { BadGatewayException, BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import {
@@ -29,6 +29,7 @@ import { AiGatewayErrorClassifierService } from './ai-gateway-error-classifier.s
 import { AiGatewaySchedulerService } from './ai-gateway-scheduler.service';
 import { AiVoicesService } from './ai-voices.service';
 import { AiVideoResultProxyService } from './ai-video-result-proxy.service';
+import { AiGatewayObservabilityService } from './ai-gateway-observability.service';
 import { OutboundHttpClientService } from '../outbound-proxy/outbound-http-client.service';
 import { RuntimeSettingsService } from '../runtime-settings/runtime-settings.service';
 import {
@@ -352,12 +353,7 @@ export class AiChatService implements OnModuleInit {
   private minimaxVoiceCatalogCache: MinimaxVoiceCatalog | null | undefined;
   private minimaxVoiceCatalogPath: string | null = null;
   private readonly minimaxVoiceApiCache = new Map<string, { value: MinimaxVoiceCatalog; expiresAt: number }>();
-  private readonly minimaxVoiceApiCacheMs = this.readBoundedInt(
-    'MINIMAX_VOICE_API_CACHE_MS',
-    MINIMAX_VOICE_API_CACHE_MS,
-    0,
-    24 * 60 * 60 * 1000,
-  );
+  private minimaxVoiceApiCacheMs = MINIMAX_VOICE_API_CACHE_MS;
   private dashscopeVideoQueueSchemaEnsured = false;
   private readonly modelPricingCache = new Map<string, { value: Record<string, unknown>; expiresAt: number }>();
   private readonly modelPricingInflight = new Map<string, Promise<Record<string, unknown>>>();
@@ -366,18 +362,8 @@ export class AiChatService implements OnModuleInit {
   private aiGatewayTuning: Record<string, unknown> = {};
   private aiGatewayTuningLoadedAt = 0;
   private aiGatewayTuningLoading: Promise<void> | null = null;
-  private readonly minimaxTtsKeyMinIntervalMs = this.readBoundedInt(
-    'MINIMAX_TTS_KEY_MIN_INTERVAL_MS',
-    MINIMAX_TTS_KEY_MIN_INTERVAL_MS,
-    0,
-    60_000,
-  );
-  private readonly openRouterSttMaxAudioBytes = this.readBoundedInt(
-    'OPENROUTER_STT_MAX_AUDIO_BYTES',
-    OPENROUTER_STT_MAX_AUDIO_BYTES,
-    1024,
-    120 * 1024 * 1024,
-  );
+  private minimaxTtsKeyMinIntervalMs = MINIMAX_TTS_KEY_MIN_INTERVAL_MS;
+  private openRouterSttMaxAudioBytes = OPENROUTER_STT_MAX_AUDIO_BYTES;
 
   constructor(
     @Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient,
@@ -392,6 +378,7 @@ export class AiChatService implements OnModuleInit {
     private readonly aiGatewayScheduler: AiGatewaySchedulerService,
     private readonly aiVoicesService: AiVoicesService,
     private readonly aiVideoResultProxy: AiVideoResultProxyService,
+    private readonly aiGatewayObservability: AiGatewayObservabilityService,
     private readonly outboundHttp: OutboundHttpClientService,
     private readonly runtimeSettingsService: RuntimeSettingsService,
   ) {}
@@ -2763,7 +2750,8 @@ export class AiChatService implements OnModuleInit {
   }
 
   private shouldUseAiSdkForward(route: ResolvedAiRoute, capability: AiCapability): boolean {
-    if (process.env.AI_DISABLE_VERCEL_SDK_FORWARD === '1') {
+    this.ensureAiGatewayTuningFresh();
+    if (this.aiGatewayTuning.disable_vercel_sdk_forward === true || String(this.aiGatewayTuning.disable_vercel_sdk_forward || '').trim() === '1') {
       return false;
     }
     if (capability === 'video') {
@@ -5322,7 +5310,6 @@ export class AiChatService implements OnModuleInit {
       overrides.image_timeout_ms,
       overrides.upstream_timeout_ms,
       this.aiGatewayTuning.image_upstream_timeout_ms,
-      process.env.AI_GATEWAY_IMAGE_UPSTREAM_TIMEOUT_MS,
     );
     return this.boundNumber(configured ?? 600000, 600000, 10000, 600000);
   }
@@ -5338,7 +5325,6 @@ export class AiChatService implements OnModuleInit {
       overrides.video_timeout_ms,
       overrides.upstream_timeout_ms,
       this.aiGatewayTuning.video_upstream_timeout_ms,
-      process.env.AI_GATEWAY_VIDEO_UPSTREAM_TIMEOUT_MS,
     );
     return this.boundNumber(
       configured ?? VIDEO_UPSTREAM_TIMEOUT_MS,
@@ -6391,6 +6377,7 @@ export class AiChatService implements OnModuleInit {
     }
 
     const startedAt = Date.now();
+    const gatewayRequestId = this.buildGatewayEventRequestId(route, payload);
     const isStreamRequest = this.isStreamingRequest(upstreamPayload);
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -6409,6 +6396,20 @@ export class AiChatService implements OnModuleInit {
     const release = await this.aiGatewayThrottle.acquire(route, context);
     let upstreamFailureRecorded = false;
     try {
+      this.aiGatewayObservability.recordRequestEventSafe({
+        route,
+        user_id: context.user_id || null,
+        request_id: gatewayRequestId,
+        request_path: context.request_path || '',
+        stage: 'selected',
+        attempt_index: 0,
+        success: true,
+        metadata: {
+          stream: isStreamRequest,
+          api_type: route.api_type,
+          endpoint_path: route.endpoint_path,
+        },
+      });
       const upstreamResult = await this.dispatchUpstreamRequest(route, async (endpointUrl) => {
         return this.aiUpstreamClient.fetch(route, endpointUrl, {
           method: 'POST',
@@ -6425,10 +6426,27 @@ export class AiChatService implements OnModuleInit {
         const errorBody = await this.aiUpstreamClient.readText(upstreamResp);
         this.aiGatewayThrottle.recordFailure(route, upstreamResp.status, errorBody);
         upstreamFailureRecorded = true;
+        this.aiGatewayObservability.recordRequestEventSafe({
+          route,
+          user_id: context.user_id || null,
+          request_id: gatewayRequestId,
+          request_path: context.request_path || '',
+          stage: 'upstream_error',
+          attempt_index: 0,
+          success: false,
+          status_code: upstreamResp.status,
+          error_message: errorBody,
+          latency_ms: Date.now() - startedAt,
+          upstream_request_id: this.extractResponseRequestId(upstreamResp),
+          metadata: {
+            attempted_endpoints: upstreamResult.attemptedEndpoints,
+          },
+        });
         this.logUsageSafe(route, payload, context, {
           success: false,
           is_stream: upstreamPayload.stream === true || upstreamPayload.stream === 'true',
           usage: {},
+          request_id: gatewayRequestId,
           latency_ms: Date.now() - startedAt,
           error_message: `HTTP ${upstreamResp.status}: ${this.truncate(String(errorBody || ''), 900)}`,
         });
@@ -6442,10 +6460,38 @@ export class AiChatService implements OnModuleInit {
       }
 
       this.aiGatewayThrottle.recordSuccess(route);
-      return this.buildSuccessfulForwardedResponse(route, upstreamPayload, context, startedAt, upstreamResp, release);
+      this.aiGatewayObservability.recordRequestEventSafe({
+        route,
+        user_id: context.user_id || null,
+        request_id: gatewayRequestId,
+        request_path: context.request_path || '',
+        stage: 'upstream_response',
+        attempt_index: 0,
+        success: true,
+        status_code: upstreamResp.status,
+        latency_ms: Date.now() - startedAt,
+        upstream_request_id: this.extractResponseRequestId(upstreamResp),
+        metadata: {
+          attempted_endpoints: upstreamResult.attemptedEndpoints,
+          stream: isStreamRequest,
+        },
+      });
+      return this.buildSuccessfulForwardedResponse(route, upstreamPayload, context, startedAt, upstreamResp, release, gatewayRequestId);
     } catch (error: any) {
       if (!upstreamFailureRecorded) {
         this.aiGatewayThrottle.recordFailure(route, this.numberOrNull(error?.status) ?? null, error?.message || null);
+        this.aiGatewayObservability.recordRequestEventSafe({
+          route,
+          user_id: context.user_id || null,
+          request_id: gatewayRequestId,
+          request_path: context.request_path || '',
+          stage: 'upstream_exception',
+          attempt_index: 0,
+          success: false,
+          status_code: this.numberOrNull(error?.status) ?? null,
+          error_message: error?.message || null,
+          latency_ms: Date.now() - startedAt,
+        });
       }
       release();
       throw error;
@@ -6459,6 +6505,7 @@ export class AiChatService implements OnModuleInit {
     context: AiInvocationContext,
   ): Promise<ForwardedAiResponse> {
     const startedAt = Date.now();
+    const gatewayRequestId = this.buildGatewayEventRequestId(route, payload);
     const headers = this.normalizeMultipartHeaders({
       Authorization: `Bearer ${route.source.api_key}`,
       ...route.source.custom_headers,
@@ -6468,6 +6515,21 @@ export class AiChatService implements OnModuleInit {
     const release = await this.aiGatewayThrottle.acquire(route, context);
     let upstreamFailureRecorded = false;
     try {
+      this.aiGatewayObservability.recordRequestEventSafe({
+        route,
+        user_id: context.user_id || null,
+        request_id: gatewayRequestId,
+        request_path: context.request_path || '',
+        stage: 'selected',
+        attempt_index: 0,
+        success: true,
+        metadata: {
+          multipart: true,
+          file_field_name: multipart.file_field_name || null,
+          api_type: route.api_type,
+          endpoint_path: route.endpoint_path,
+        },
+      });
       const upstreamResult = await this.dispatchUpstreamRequest(route, async (endpointUrl) => {
         const form = this.buildMultipartForm(payload, multipart);
         return this.aiUpstreamClient.fetch(route, endpointUrl, {
@@ -6482,10 +6544,28 @@ export class AiChatService implements OnModuleInit {
         const errorBody = await this.aiUpstreamClient.readText(upstreamResp);
         this.aiGatewayThrottle.recordFailure(route, upstreamResp.status, errorBody);
         upstreamFailureRecorded = true;
+        this.aiGatewayObservability.recordRequestEventSafe({
+          route,
+          user_id: context.user_id || null,
+          request_id: gatewayRequestId,
+          request_path: context.request_path || '',
+          stage: 'upstream_error',
+          attempt_index: 0,
+          success: false,
+          status_code: upstreamResp.status,
+          error_message: errorBody,
+          latency_ms: Date.now() - startedAt,
+          upstream_request_id: this.extractResponseRequestId(upstreamResp),
+          metadata: {
+            multipart: true,
+            attempted_endpoints: upstreamResult.attemptedEndpoints,
+          },
+        });
         this.logUsageSafe(route, payload, context, {
           success: false,
           is_stream: false,
           usage: {},
+          request_id: gatewayRequestId,
           latency_ms: Date.now() - startedAt,
           error_message: `HTTP ${upstreamResp.status}: ${this.truncate(String(errorBody || ''), 900)}`,
         });
@@ -6499,10 +6579,41 @@ export class AiChatService implements OnModuleInit {
       }
 
       this.aiGatewayThrottle.recordSuccess(route);
-      return this.buildSuccessfulForwardedResponse(route, payload, context, startedAt, upstreamResp, release);
+      this.aiGatewayObservability.recordRequestEventSafe({
+        route,
+        user_id: context.user_id || null,
+        request_id: gatewayRequestId,
+        request_path: context.request_path || '',
+        stage: 'upstream_response',
+        attempt_index: 0,
+        success: true,
+        status_code: upstreamResp.status,
+        latency_ms: Date.now() - startedAt,
+        upstream_request_id: this.extractResponseRequestId(upstreamResp),
+        metadata: {
+          multipart: true,
+          attempted_endpoints: upstreamResult.attemptedEndpoints,
+        },
+      });
+      return this.buildSuccessfulForwardedResponse(route, payload, context, startedAt, upstreamResp, release, gatewayRequestId);
     } catch (error: any) {
       if (!upstreamFailureRecorded) {
         this.aiGatewayThrottle.recordFailure(route, this.numberOrNull(error?.status) ?? null, error?.message || null);
+        this.aiGatewayObservability.recordRequestEventSafe({
+          route,
+          user_id: context.user_id || null,
+          request_id: gatewayRequestId,
+          request_path: context.request_path || '',
+          stage: 'upstream_exception',
+          attempt_index: 0,
+          success: false,
+          status_code: this.numberOrNull(error?.status) ?? null,
+          error_message: error?.message || null,
+          latency_ms: Date.now() - startedAt,
+          metadata: {
+            multipart: true,
+          },
+        });
       }
       release();
       throw error;
@@ -6845,6 +6956,7 @@ export class AiChatService implements OnModuleInit {
     startedAt: number,
     upstreamResp: Response,
     release?: AiGatewayRelease,
+    gatewayRequestId?: string | null,
   ): Promise<ForwardedAiResponse> {
     const isStream = payload.stream === true || payload.stream === 'true';
     if (isStream) {
@@ -6855,6 +6967,7 @@ export class AiChatService implements OnModuleInit {
         upstreamResp.body,
         startedAt,
         release,
+        gatewayRequestId,
       );
       return {
         stream: true,
@@ -6877,7 +6990,7 @@ export class AiChatService implements OnModuleInit {
           success: true,
           is_stream: false,
           usage,
-          request_id: usage.request_id || this.stringOrUndefined(data.id),
+          request_id: usage.request_id || this.stringOrUndefined(data.id) || gatewayRequestId || null,
           latency_ms: Date.now() - startedAt,
         });
         return {
@@ -6900,6 +7013,7 @@ export class AiChatService implements OnModuleInit {
           success: true,
           is_stream: false,
           usage: {},
+          request_id: gatewayRequestId || null,
           latency_ms: Date.now() - startedAt,
         });
         return {
@@ -6916,6 +7030,7 @@ export class AiChatService implements OnModuleInit {
         success: true,
         is_stream: false,
         usage: {},
+        request_id: gatewayRequestId || null,
         latency_ms: Date.now() - startedAt,
       });
       if (this.isTextLikeUpstreamContentType(contentType)) {
@@ -12454,12 +12569,14 @@ export class AiChatService implements OnModuleInit {
     source: ReadableStream<Uint8Array> | null,
     startedAt: number,
     release?: AiGatewayRelease,
+    gatewayRequestId?: string | null,
   ): ReadableStream<Uint8Array> | null {
     if (!source) {
       this.logUsageSafe(route, payload, context, {
         success: true,
         is_stream: true,
         usage: {},
+        request_id: gatewayRequestId || null,
         latency_ms: Date.now() - startedAt,
       });
       release?.();
@@ -12517,7 +12634,7 @@ export class AiChatService implements OnModuleInit {
             success: true,
             is_stream: true,
             usage: this.withEstimatedStreamUsageFallback(payload, latestUsage, streamedText),
-            request_id: latestUsage.request_id || null,
+            request_id: latestUsage.request_id || gatewayRequestId || null,
             latency_ms: Date.now() - startedAt,
           });
           controller.close();
@@ -12526,7 +12643,7 @@ export class AiChatService implements OnModuleInit {
             success: false,
             is_stream: true,
             usage: latestUsage,
-            request_id: latestUsage.request_id || null,
+            request_id: latestUsage.request_id || gatewayRequestId || null,
             latency_ms: Date.now() - startedAt,
             error_message: this.truncate(String(error?.message || 'stream forwarding failed'), 900),
           });
@@ -13941,14 +14058,41 @@ export class AiChatService implements OnModuleInit {
           points_pricing_source: null,
           latency_ms: input.latency_ms ?? null,
         });
+        this.aiGatewayObservability.recordRequestEventSafe({
+          route,
+          user_id: context.user_id || null,
+          request_id: requestId || usageReferenceId,
+          usage_reference_id: usageReferenceId,
+          request_path: context.request_path || '',
+          stage: 'usage_recorded',
+          success: input.success,
+          latency_ms: input.latency_ms ?? null,
+          error_message: input.error_message || null,
+          metadata: {
+            billable: input.billable !== false,
+            billed_units: billing.billed_units,
+            billed_unit_label: billing.billed_unit_label,
+            estimated_cost_rmb: billing.estimated_cost_rmb,
+          },
+        });
       } catch (error: any) {
+        this.aiGatewayObservability.recordRequestEventSafe({
+          route,
+          user_id: context.user_id || null,
+          request_id: requestId || usageReferenceId,
+          usage_reference_id: usageReferenceId,
+          request_path: context.request_path || '',
+          stage: 'usage_record_failed',
+          success: false,
+          error_message: error?.message || null,
+        });
         this.logger.warn(`failed to record AI usage log: ${error?.message || 'unknown error'}`);
         return;
       }
 
       if (input.success && input.billable !== false) {
         try {
-          await this.chargeAiPointsForUsage(route, payload, context, {
+          const chargeResult = await this.chargeAiPointsForUsage(route, payload, context, {
             usage_reference_id: usageReferenceId,
             request_id: requestId,
             is_stream: input.is_stream,
@@ -13981,7 +14125,32 @@ export class AiChatService implements OnModuleInit {
             effective_cache_write_1h_unit_price_rmb: billing.effective_cache_write_1h_unit_price_rmb,
             effective_output_unit_price_rmb: billing.effective_output_unit_price_rmb,
           });
+          this.aiGatewayObservability.recordRequestEventSafe({
+            route,
+            user_id: context.user_id || null,
+            request_id: requestId || usageReferenceId,
+            usage_reference_id: usageReferenceId,
+            request_path: context.request_path || '',
+            stage: chargeResult.charged ? 'points_charged' : 'points_charge_skipped',
+            success: chargeResult.charged,
+            metadata: {
+              points_cost: chargeResult.points_cost,
+              reason: chargeResult.reason || null,
+              billed_units: billing.billed_units,
+              billed_unit_label: billing.billed_unit_label,
+            },
+          });
         } catch (error: any) {
+          this.aiGatewayObservability.recordRequestEventSafe({
+            route,
+            user_id: context.user_id || null,
+            request_id: requestId || usageReferenceId,
+            usage_reference_id: usageReferenceId,
+            request_path: context.request_path || '',
+            stage: 'points_charge_failed',
+            success: false,
+            error_message: error?.message || null,
+          });
           this.logger.warn(`failed to charge AI points: ${error?.message || 'unknown error'}`);
         }
       }
@@ -14076,6 +14245,27 @@ export class AiChatService implements OnModuleInit {
     }
     const randomPart = Math.random().toString(36).slice(2, 10);
     return `${route.model_id}:${Date.now().toString(36)}:${randomPart}`.slice(0, 120);
+  }
+
+  private buildGatewayEventRequestId(route: ResolvedAiRoute, payload: Record<string, unknown>): string {
+    const explicit =
+      this.stringOrUndefined(payload.request_id)
+      || this.stringOrUndefined(payload.id)
+      || this.stringOrUndefined(payload.response_id)
+      || this.stringOrUndefined(payload.previous_response_id);
+    if (explicit) {
+      return explicit.slice(0, 128);
+    }
+    return `gw_${route.model_key}_${Date.now().toString(36)}_${randomUUID().slice(0, 8)}`
+      .replace(/[^a-zA-Z0-9_.:-]/g, '_')
+      .slice(0, 128);
+  }
+
+  private extractResponseRequestId(response: Response): string | null {
+    return this.stringOrUndefined(response.headers.get('x-request-id'))
+      || this.stringOrUndefined(response.headers.get('request-id'))
+      || this.stringOrUndefined(response.headers.get('x-upstream-request-id'))
+      || null;
   }
 
   private buildAsyncVideoReservationKey(route: ResolvedAiRoute): string {
@@ -14295,10 +14485,10 @@ export class AiChatService implements OnModuleInit {
       effective_cache_write_1h_unit_price_rmb?: number | null;
       effective_output_unit_price_rmb?: number | null;
     },
-  ) {
+  ): Promise<{ charged: boolean; points_cost: number; reason?: string }> {
     const userId = this.stringOrUndefined(context.user_id);
     if (!userId) {
-      return;
+      return { charged: false, points_cost: 0, reason: 'no_user' };
     }
 
     const costRmb = Number(input.estimated_cost_rmb || 0);
@@ -14319,7 +14509,7 @@ export class AiChatService implements OnModuleInit {
     );
     const pointsCost = pointCharge.points;
     if (pointsCost <= 0) {
-      return;
+      return { charged: false, points_cost: 0, reason: 'zero_cost' };
     }
 
     const referenceId = this.stringOrUndefined(input.usage_reference_id) || this.buildAiUsageReferenceId(route, input.request_id);
@@ -14388,12 +14578,13 @@ export class AiChatService implements OnModuleInit {
         points_cost: pointsCost,
         points_pricing_source: pointCharge.source,
       });
+      return { charged: true, points_cost: pointsCost };
     } catch (error) {
       if (error instanceof InsufficientAiPointsError) {
         this.logger.warn(
           `AI points insufficient app=${route.app_slug} user=${userId} model=${route.model_key} required=${error.required} balance=${error.balance}`,
         );
-        return;
+        return { charged: false, points_cost: pointsCost, reason: 'insufficient_points' };
       }
       throw error;
     }
@@ -16253,7 +16444,8 @@ export class AiChatService implements OnModuleInit {
       return this.minimaxVoiceCatalogCache;
     }
 
-    const configuredPath = this.stringOrUndefined(process.env.MINIMAX_VOICE_CATALOG_PATH);
+    this.ensureAiGatewayTuningFresh();
+    const configuredPath = this.stringOrUndefined(this.aiGatewayTuning.minimax_voice_catalog_path);
     const candidatePaths = [
       configuredPath,
       resolve(process.cwd(), 'Doc/minimax/音色列表.json'),
@@ -16768,7 +16960,7 @@ export class AiChatService implements OnModuleInit {
     if (this.aiGatewayTuning.trace_log !== undefined) {
       return this.aiGatewayTuning.trace_log === true || String(this.aiGatewayTuning.trace_log).trim() === '1';
     }
-    return String(process.env.AI_GATEWAY_TRACE_LOG || '').trim() === '1';
+    return false;
   }
 
   private truncate(value: string, maxLength: number): string {
@@ -16839,10 +17031,6 @@ export class AiChatService implements OnModuleInit {
     return Math.min(Math.max(base, min), max);
   }
 
-  private readBoundedInt(envName: string, fallback: number, min: number, max: number): number {
-    return this.boundNumber(process.env[envName], fallback, min, max);
-  }
-
   private ensureAiGatewayTuningFresh(): void {
     if (this.aiGatewayTuningLoadedAt > 0 && Date.now() - this.aiGatewayTuningLoadedAt < 15000) {
       return;
@@ -16857,10 +17045,31 @@ export class AiChatService implements OnModuleInit {
   private async refreshAiGatewayTuning(): Promise<void> {
     try {
       this.aiGatewayTuning = await this.runtimeSettingsService.getAiGatewayTuning();
+      this.minimaxVoiceApiCacheMs = this.boundNumber(
+        this.aiGatewayTuning.minimax_voice_api_cache_ms,
+        MINIMAX_VOICE_API_CACHE_MS,
+        0,
+        24 * 60 * 60 * 1000,
+      );
+      this.minimaxTtsKeyMinIntervalMs = this.boundNumber(
+        this.aiGatewayTuning.minimax_tts_key_min_interval_ms,
+        MINIMAX_TTS_KEY_MIN_INTERVAL_MS,
+        0,
+        60_000,
+      );
+      this.openRouterSttMaxAudioBytes = this.boundNumber(
+        this.aiGatewayTuning.openrouter_stt_max_audio_bytes,
+        OPENROUTER_STT_MAX_AUDIO_BYTES,
+        1024,
+        120 * 1024 * 1024,
+      );
       this.aiGatewayTuningLoadedAt = Date.now();
     } catch (error: any) {
       this.logger.warn(`AI gateway tuning refresh failed: ${error?.message || error}`);
       this.aiGatewayTuning = {};
+      this.minimaxVoiceApiCacheMs = MINIMAX_VOICE_API_CACHE_MS;
+      this.minimaxTtsKeyMinIntervalMs = MINIMAX_TTS_KEY_MIN_INTERVAL_MS;
+      this.openRouterSttMaxAudioBytes = OPENROUTER_STT_MAX_AUDIO_BYTES;
       this.aiGatewayTuningLoadedAt = Date.now();
     }
   }

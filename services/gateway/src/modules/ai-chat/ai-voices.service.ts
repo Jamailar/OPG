@@ -601,7 +601,7 @@ export class AiVoicesService implements OnModuleInit {
     if (configured) {
       return configured;
     }
-    return this.normalizeString(process.env.AI_VOICE_CLONE_MODEL_KEY, 255);
+    return '';
   }
 
   @Interval(15000)

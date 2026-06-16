@@ -15,11 +15,12 @@ type SchedulerInvokeOptions<T> = {
   invoke: (route: ResolvedAiRoute) => Promise<T>;
   onRetry?: (route: ResolvedAiRoute, nextIndex: number, error: unknown) => void;
 };
+const DEFAULT_STICKY_TTL_MS = 10 * 60 * 1000;
 
 @Injectable()
 export class AiGatewaySchedulerService {
   private readonly stickySelections = new Map<string, StickyEntry>();
-  private stickyTtlMs = this.readNonNegativeInt('AI_GATEWAY_STICKY_TTL_MS', 10 * 60 * 1000, 0, 24 * 60 * 60 * 1000);
+  private stickyTtlMs = DEFAULT_STICKY_TTL_MS;
   private tuningLoadedAt = 0;
   private tuningLoading: Promise<number> | null = null;
 
@@ -146,14 +147,6 @@ export class AiGatewaySchedulerService {
     return '';
   }
 
-  private readNonNegativeInt(name: string, fallback: number, min: number, max: number): number {
-    const parsed = Number.parseInt(String(process.env[name] || '').trim(), 10);
-    if (!Number.isFinite(parsed)) {
-      return fallback;
-    }
-    return Math.min(max, Math.max(min, parsed));
-  }
-
   private async getStickyTtlMs() {
     const now = Date.now();
     if (this.tuningLoadedAt > 0 && now - this.tuningLoadedAt < 15000) {
@@ -168,12 +161,11 @@ export class AiGatewaySchedulerService {
   }
 
   private async loadStickyTtlMs() {
-    const fallback = this.readNonNegativeInt('AI_GATEWAY_STICKY_TTL_MS', 10 * 60 * 1000, 0, 24 * 60 * 60 * 1000);
     try {
       const tuning = await this.runtimeSettingsService.getAiGatewayTuning();
-      this.stickyTtlMs = this.numberValue(tuning.sticky_ttl_ms, fallback, 0, 24 * 60 * 60 * 1000);
+      this.stickyTtlMs = this.numberValue(tuning.sticky_ttl_ms, DEFAULT_STICKY_TTL_MS, 0, 24 * 60 * 60 * 1000);
     } catch {
-      this.stickyTtlMs = fallback;
+      this.stickyTtlMs = DEFAULT_STICKY_TTL_MS;
     }
     this.tuningLoadedAt = Date.now();
     return this.stickyTtlMs;

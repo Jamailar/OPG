@@ -9,6 +9,7 @@ import { OutboundProxyService } from '../outbound-proxy/outbound-proxy.service';
 import { PlatformAdminService } from './platform-admin.service';
 import { PlatformAdminAiDebugJwtAuthGuard } from './guards/platform-admin-ai-debug-jwt-auth.guard';
 import { RuntimeSettingsService } from '../runtime-settings/runtime-settings.service';
+import { AiGatewayObservabilityService } from '../ai-chat/ai-gateway-observability.service';
 
 @ApiTags('PlatformAdmin')
 @Controller(tenantControllerPaths('platform-admin', true))
@@ -21,6 +22,7 @@ export class PlatformAdminController {
     private readonly emailDeliveryService: EmailDeliveryService,
     private readonly outboundProxyService: OutboundProxyService,
     private readonly runtimeSettingsService: RuntimeSettingsService,
+    private readonly aiGatewayObservabilityService: AiGatewayObservabilityService,
   ) {}
 
   @Get('apps')
@@ -1034,6 +1036,88 @@ export class PlatformAdminController {
   @ApiOperation({ summary: 'AI 网关运行状态' })
   async getAiGatewayRuntimeStats() {
     return this.aiChatService.getGatewayRuntimeStats();
+  }
+
+  @Get('ai/gateway/provider-health')
+  @ApiOperation({ summary: 'AI 网关供应商健康状态' })
+  async listAiGatewayProviderHealth(
+    @Query('provider_type') providerType?: string,
+    @Query('source_id') sourceId?: string,
+    @Query('model_id') modelId?: string,
+    @Query('model_key') modelKey?: string,
+    @Query('capability') capability?: string,
+    @Query('status') status?: string,
+    @Query('page') page?: string,
+    @Query('page_size') pageSize?: string,
+  ) {
+    return this.aiGatewayObservabilityService.listProviderHealth({
+      provider_type: providerType,
+      source_id: sourceId,
+      model_id: modelId,
+      model_key: modelKey,
+      capability,
+      status,
+      page,
+      page_size: pageSize,
+    });
+  }
+
+  @Get('ai/gateway/request-events')
+  @ApiOperation({ summary: 'AI 网关请求事件' })
+  async listAiGatewayRequestEvents(
+    @Query('app_id') appId?: string,
+    @Query('user_id') userId?: string,
+    @Query('request_id') requestId?: string,
+    @Query('usage_reference_id') usageReferenceId?: string,
+    @Query('source_id') sourceId?: string,
+    @Query('model_id') modelId?: string,
+    @Query('model_key') modelKey?: string,
+    @Query('capability') capability?: string,
+    @Query('stage') stage?: string,
+    @Query('success') success?: string,
+    @Query('days') days?: string,
+    @Query('page') page?: string,
+    @Query('page_size') pageSize?: string,
+  ) {
+    return this.aiGatewayObservabilityService.listRequestEvents({
+      app_id: appId,
+      user_id: userId,
+      request_id: requestId,
+      usage_reference_id: usageReferenceId,
+      source_id: sourceId,
+      model_id: modelId,
+      model_key: modelKey,
+      capability,
+      stage,
+      success,
+      days,
+      page,
+      page_size: pageSize,
+    });
+  }
+
+  @Get('ai/audit-events')
+  @ApiOperation({ summary: 'AI 配置审计事件' })
+  async listAiAuditEvents(
+    @Query('actor_user_id') actorUserId?: string,
+    @Query('app_id') appId?: string,
+    @Query('action') action?: string,
+    @Query('resource_type') resourceType?: string,
+    @Query('resource_id') resourceId?: string,
+    @Query('days') days?: string,
+    @Query('page') page?: string,
+    @Query('page_size') pageSize?: string,
+  ) {
+    return this.aiGatewayObservabilityService.listAuditEvents({
+      actor_user_id: actorUserId,
+      app_id: appId,
+      action,
+      resource_type: resourceType,
+      resource_id: resourceId,
+      days,
+      page,
+      page_size: pageSize,
+    });
   }
 
   @Post('ai/sources')

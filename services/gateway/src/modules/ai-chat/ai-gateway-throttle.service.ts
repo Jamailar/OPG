@@ -4,6 +4,7 @@ import Redis from 'ioredis';
 import { ResolvedAiRoute } from './ai-routing.service';
 import { AiGatewayErrorClassifierService } from './ai-gateway-error-classifier.service';
 import { RuntimeSettingsService } from '../runtime-settings/runtime-settings.service';
+import { AiGatewayObservabilityService } from './ai-gateway-observability.service';
 
 type ActiveCounter = {
   active: number;
@@ -39,6 +40,21 @@ type AiGatewayThrottleTuning = {
   cooldownMs: number;
   failOpen: boolean;
 };
+const DEFAULT_AI_GATEWAY_THROTTLE_TUNING: AiGatewayThrottleTuning = {
+  redisLimitsEnabled: false,
+  redisPrefix: 'ai-gateway',
+  maxSourceConcurrency: 128,
+  maxUserConcurrency: 16,
+  maxApiKeyConcurrency: 0,
+  maxAccountConcurrency: 0,
+  sourceRpm: 0,
+  userRpm: 0,
+  apiKeyRpm: 0,
+  accountRpm: 0,
+  cooldownFailureThreshold: 3,
+  cooldownMs: 10000,
+  failOpen: false,
+};
 
 @Injectable()
 export class AiGatewayThrottleService implements OnModuleDestroy {
@@ -48,13 +64,14 @@ export class AiGatewayThrottleService implements OnModuleDestroy {
   private readonly sourceHealth = new Map<string, SourceHealth>();
   private redis: Redis | null = null;
   private redisUnavailableLogged = false;
-  private tuning = this.readDefaultTuning();
+  private tuning = DEFAULT_AI_GATEWAY_THROTTLE_TUNING;
   private tuningLoadedAt = 0;
   private tuningLoading: Promise<AiGatewayThrottleTuning> | null = null;
 
   constructor(
     private readonly errorClassifier: AiGatewayErrorClassifierService,
     private readonly runtimeSettingsService: RuntimeSettingsService,
+    private readonly observability: AiGatewayObservabilityService,
   ) {}
 
   async onModuleDestroy() {
@@ -86,6 +103,10 @@ export class AiGatewayThrottleService implements OnModuleDestroy {
 
   recordSuccess(route: ResolvedAiRoute): void {
     this.sourceHealth.delete(this.sourceKey(route));
+    this.observability.recordRouteHealthSafe({
+      route,
+      success: true,
+    });
   }
 
   recordFailure(route: ResolvedAiRoute, status?: number | null, message?: string | null): void {
@@ -113,6 +134,13 @@ export class AiGatewayThrottleService implements OnModuleDestroy {
       );
     }
     this.sourceHealth.set(key, current);
+    this.observability.recordRouteHealthSafe({
+      route,
+      success: false,
+      status_code: status ?? null,
+      error_message: message || null,
+      cooldown_until: current.cooldownUntil > Date.now() ? new Date(current.cooldownUntil) : null,
+    });
   }
 
   getStats() {
@@ -406,32 +434,6 @@ export class AiGatewayThrottleService implements OnModuleDestroy {
     `;
   }
 
-  private readNonNegativeInt(name: string, fallback: number, min: number, max: number): number {
-    const parsed = Number.parseInt(String(process.env[name] || '').trim(), 10);
-    if (!Number.isFinite(parsed)) {
-      return fallback;
-    }
-    return Math.min(max, Math.max(min, parsed));
-  }
-
-  private readDefaultTuning(): AiGatewayThrottleTuning {
-    return {
-      redisLimitsEnabled: String(process.env.AI_GATEWAY_REDIS_LIMITS || '').trim() === '1',
-      redisPrefix: String(process.env.AI_GATEWAY_REDIS_PREFIX || 'ai-gateway').trim() || 'ai-gateway',
-      maxSourceConcurrency: this.readNonNegativeInt('AI_GATEWAY_MAX_SOURCE_CONCURRENCY', 128, 0, 10000),
-      maxUserConcurrency: this.readNonNegativeInt('AI_GATEWAY_MAX_USER_CONCURRENCY', 16, 0, 10000),
-      maxApiKeyConcurrency: this.readNonNegativeInt('AI_GATEWAY_MAX_API_KEY_CONCURRENCY', 0, 0, 10000),
-      maxAccountConcurrency: this.readNonNegativeInt('AI_GATEWAY_MAX_ACCOUNT_CONCURRENCY', 0, 0, 10000),
-      sourceRpm: this.readNonNegativeInt('AI_GATEWAY_SOURCE_RPM', 0, 0, 1000000),
-      userRpm: this.readNonNegativeInt('AI_GATEWAY_USER_RPM', 0, 0, 1000000),
-      apiKeyRpm: this.readNonNegativeInt('AI_GATEWAY_API_KEY_RPM', 0, 0, 1000000),
-      accountRpm: this.readNonNegativeInt('AI_GATEWAY_ACCOUNT_RPM', 0, 0, 1000000),
-      cooldownFailureThreshold: this.readNonNegativeInt('AI_GATEWAY_COOLDOWN_FAILURE_THRESHOLD', 3, 1, 1000),
-      cooldownMs: this.readNonNegativeInt('AI_GATEWAY_COOLDOWN_MS', 10000, 0, 60 * 60 * 1000),
-      failOpen: String(process.env.AI_GATEWAY_THROTTLE_FAIL_OPEN || '').trim() === '1',
-    };
-  }
-
   private async getTuning() {
     const now = Date.now();
     if (this.tuningLoadedAt > 0 && now - this.tuningLoadedAt < 15000) {
@@ -446,7 +448,7 @@ export class AiGatewayThrottleService implements OnModuleDestroy {
   }
 
   private async loadTuning(): Promise<AiGatewayThrottleTuning> {
-    const defaults = this.readDefaultTuning();
+    const defaults = DEFAULT_AI_GATEWAY_THROTTLE_TUNING;
     try {
       const raw = await this.runtimeSettingsService.getAiGatewayTuning();
       this.tuning = {
@@ -465,7 +467,7 @@ export class AiGatewayThrottleService implements OnModuleDestroy {
         failOpen: this.booleanValue(raw.throttle_fail_open, defaults.failOpen),
       };
     } catch (error: any) {
-      this.logger.warn(`AI gateway tuning load failed; using env fallback: ${error?.message || error}`);
+      this.logger.warn(`AI gateway tuning load failed; using defaults: ${error?.message || error}`);
       this.tuning = defaults;
     }
     this.tuningLoadedAt = Date.now();

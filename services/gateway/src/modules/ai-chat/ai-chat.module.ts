@@ -15,6 +15,7 @@ import { AiUpstreamClientService } from './ai-upstream-client.service';
 import { AiGatewayErrorClassifierService } from './ai-gateway-error-classifier.service';
 import { AiGatewaySchedulerService } from './ai-gateway-scheduler.service';
 import { AiVideoResultProxyService } from './ai-video-result-proxy.service';
+import { AiGatewayObservabilityService } from './ai-gateway-observability.service';
 import { AuthModule } from '../auth/auth.module';
 import { AiDebugAuthService } from './guards/ai-debug-auth.service';
 import { AiDebugJwtAuthGuard } from './guards/ai-debug-jwt-auth.guard';
@@ -40,11 +41,12 @@ import { PlatformAdminAccessGuard } from '../../common/guards/platform-admin-acc
     AiGatewayErrorClassifierService,
     AiGatewaySchedulerService,
     AiVideoResultProxyService,
+    AiGatewayObservabilityService,
     AiDebugAuthService,
     AiDebugJwtAuthGuard,
     OpenAiCompatAuthGuard,
     PlatformAdminAccessGuard,
   ],
-  exports: [AiChatService, AiRoutingService, AiVoicesService, AiPointsService, AiDebugAuthService, AiDebugJwtAuthGuard],
+  exports: [AiChatService, AiRoutingService, AiVoicesService, AiPointsService, AiGatewayObservabilityService, AiDebugAuthService, AiDebugJwtAuthGuard],
 })
 export class AiChatModule {}

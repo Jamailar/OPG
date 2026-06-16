@@ -14,6 +14,7 @@ import {
 import { createOpenAI } from '@ai-sdk/openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { GoogleGenAI, Modality } from '@google/genai';
+import { AiGatewayObservabilityService } from './ai-gateway-observability.service';
 import {
   RUNNINGHUB_DEFAULT_QUERY_PATH,
   RUNNINGHUB_DEFAULT_UPLOAD_PATH,
@@ -427,6 +428,7 @@ export interface ResolvedAiRoute {
     provider_type: string;
     base_url: string;
     api_key: string;
+    api_key_id?: string | null;
     custom_headers: Record<string, string>;
     credentials: Record<string, unknown>;
     outbound_proxy_id: string | null;
@@ -582,6 +584,7 @@ export class AiRoutingService implements OnModuleInit {
   constructor(
     @Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient,
     private readonly outboundHttp: OutboundHttpClientService,
+    private readonly observability: AiGatewayObservabilityService,
   ) {}
 
   async onModuleInit() {
@@ -752,6 +755,21 @@ export class AiRoutingService implements OnModuleInit {
       await this.replaceSourceApiKeys(inserted[0].id, actorUserId, payload.api_keys, apiKey);
     }
     this.clearResolvedRouteCache();
+    this.observability.recordAuditEventSafe({
+      actor_user_id: actorUserId,
+      action: 'ai_source.create',
+      resource_type: 'ai_global_source',
+      resource_id: inserted[0].id,
+      after: {
+        ...inserted[0],
+        api_keys: payload.api_keys,
+      },
+      metadata: {
+        name,
+        provider_type: providerType,
+        is_active: isActive,
+      },
+    });
     return this.getSerializedGlobalSourceById(inserted[0].id);
   }
 
@@ -854,11 +872,38 @@ export class AiRoutingService implements OnModuleInit {
       }
     }
     this.clearResolvedRouteCache();
+    this.observability.recordAuditEventSafe({
+      actor_user_id: actorUserId,
+      action: 'ai_source.update',
+      resource_type: 'ai_global_source',
+      resource_id: sourceId,
+      before: existing,
+      after: updated[0] || {
+        id: sourceId,
+        name: nextName,
+        provider_type: nextProviderType,
+        base_url: nextBaseUrl,
+        custom_headers: nextHeaders,
+        credentials_json: nextCredentials,
+        outbound_proxy_id: nextOutboundProxyId,
+        is_active: nextIsActive,
+      },
+      metadata: {
+        name: nextName,
+        provider_type: nextProviderType,
+        is_active: nextIsActive,
+        api_keys_replaced: payload.api_keys !== undefined || payload.api_key !== undefined,
+      },
+    });
     return this.getSerializedGlobalSourceById(sourceId);
   }
 
   async deleteGlobalSource(sourceId: string) {
     await this.ensureSchema();
+    const existing = await this.getGlobalSourceById(sourceId);
+    if (!existing) {
+      throw new NotFoundException('AI source not found');
+    }
 
     const usedByGlobalModels = await (this.prisma.$queryRawUnsafe(
       `SELECT COUNT(*)::bigint AS count FROM ai_global_models WHERE default_source_id = $1::uuid`,
@@ -886,6 +931,16 @@ export class AiRoutingService implements OnModuleInit {
     this.sourceApiKeyCache.delete(sourceId);
     this.sourceApiKeyRotationCounters.delete(sourceId);
     this.clearResolvedRouteCache();
+    this.observability.recordAuditEventSafe({
+      action: 'ai_source.delete',
+      resource_type: 'ai_global_source',
+      resource_id: sourceId,
+      before: existing,
+      metadata: {
+        name: existing.name,
+        provider_type: existing.provider_type,
+      },
+    });
     return { deleted: true };
   }
 
@@ -905,7 +960,7 @@ export class AiRoutingService implements OnModuleInit {
       providerType,
     );
     const apiKey = String(payload.api_key || '').trim()
-      || (existing ? await this.selectNextSourceApiKey(existing.id, existing.api_key) : '');
+      || (existing ? (await this.selectNextSourceApiKey(existing.id, existing.api_key)).apiKey : '');
     const customHeaders =
       payload.custom_headers === undefined
         ? this.normalizeStringObject(existing?.custom_headers)
@@ -1082,7 +1137,7 @@ export class AiRoutingService implements OnModuleInit {
     if (!source) {
       throw new NotFoundException('AI source not found');
     }
-    source.api_key = await this.selectNextSourceApiKey(source.id, source.api_key);
+    source.api_key = (await this.selectNextSourceApiKey(source.id, source.api_key)).apiKey;
     const sourceRoute = existingModel
       ? await this.findGlobalModelSourceRouteForSource(existingModel.id, sourceId)
       : null;
@@ -1656,6 +1711,24 @@ export class AiRoutingService implements OnModuleInit {
     });
 
     this.clearResolvedRouteCache();
+    this.observability.recordAuditEventSafe({
+      actor_user_id: actorUserId,
+      action: 'ai_model.create',
+      resource_type: 'ai_global_model',
+      resource_id: inserted[0].id,
+      after: {
+        ...inserted[0],
+        source_routes: payload.source_routes,
+      },
+      metadata: {
+        model_key: modelKey,
+        capability,
+        default_source_id: defaultSourceId,
+        pricing_mode: pricingMode,
+        is_active: isActive,
+        is_visible: isVisible,
+      },
+    });
     return this.getGlobalModelById(inserted[0].id);
   }
 
@@ -1903,6 +1976,35 @@ export class AiRoutingService implements OnModuleInit {
     });
 
     this.clearResolvedRouteCache();
+    this.observability.recordAuditEventSafe({
+      actor_user_id: actorUserId,
+      action: 'ai_model.update',
+      resource_type: 'ai_global_model',
+      resource_id: modelId,
+      before: existing,
+      after: {
+        model_key: nextModelKey,
+        display_name: nextDisplayName,
+        capability: nextCapability,
+        execution_mode: nextExecutionMode,
+        pricing_mode: nextPricingMode,
+        default_source_id: nextDefaultSourceId,
+        upstream_model: nextUpstreamModel,
+        endpoint_path: normalizedNextEndpointPath,
+        api_type: nextResolvedApiType,
+        request_overrides: nextRequestOverrides,
+        is_default: nextIsDefault,
+        is_active: nextIsActive,
+        is_visible: nextIsVisible,
+        source_routes: payload.source_routes,
+      },
+      metadata: {
+        model_key: nextModelKey,
+        capability: nextCapability,
+        default_source_id: nextDefaultSourceId,
+        source_routes_replaced: payload.source_routes !== undefined,
+      },
+    });
     return this.getGlobalModelById(modelId);
   }
 
@@ -1937,6 +2039,22 @@ export class AiRoutingService implements OnModuleInit {
         modelId,
       );
       this.clearResolvedRouteCache();
+      this.observability.recordAuditEventSafe({
+        action: 'ai_model.archive',
+        resource_type: 'ai_global_model',
+        resource_id: modelId,
+        before: existing,
+        after: {
+          model_key: archivedModelKey,
+          is_default: false,
+          is_active: false,
+          is_visible: false,
+        },
+        metadata: {
+          usage_log_count: usageCount,
+          archived_reason: 'usage_logs_exist',
+        },
+      });
       return {
         deleted: true,
         archived: true,
@@ -1950,6 +2068,16 @@ export class AiRoutingService implements OnModuleInit {
       throw new NotFoundException('AI model not found');
     }
     this.clearResolvedRouteCache();
+    this.observability.recordAuditEventSafe({
+      action: 'ai_model.delete',
+      resource_type: 'ai_global_model',
+      resource_id: modelId,
+      before: existing,
+      metadata: {
+        model_key: existing.model_key,
+        capability: existing.capability,
+      },
+    });
     return { deleted: true, archived: false };
   }
 
@@ -2211,6 +2339,22 @@ export class AiRoutingService implements OnModuleInit {
     }
 
     this.clearResolvedRouteCache();
+    this.observability.recordAuditEventSafe({
+      actor_user_id: actorUserId,
+      app_id: appId,
+      action: 'ai_app_default_model_slot.upsert',
+      resource_type: 'ai_app_default_model_slot',
+      resource_id: `${appId}:${slotKey}`,
+      before: existing[0] || null,
+      after: {
+        slot_key: slotKey,
+        primary_global_model_id: primaryModelId,
+        fallback_global_model_id: fallbackModelId,
+      },
+      metadata: {
+        slot_key: slotKey,
+      },
+    });
     const slots = await this.listAppDefaultModelSlotsForAppId(appId);
     return slots.items.find((item: any) => item.slot_key === slotKey);
   }
@@ -2225,6 +2369,15 @@ export class AiRoutingService implements OnModuleInit {
       slotKey,
     );
     this.clearResolvedRouteCache();
+    this.observability.recordAuditEventSafe({
+      app_id: appId,
+      action: 'ai_app_default_model_slot.delete',
+      resource_type: 'ai_app_default_model_slot',
+      resource_id: `${appId}:${slotKey}`,
+      metadata: {
+        slot_key: slotKey,
+      },
+    });
     return { deleted: true };
   }
 
@@ -2284,6 +2437,26 @@ export class AiRoutingService implements OnModuleInit {
 
     const routes = await this.listAppModelRoutes(appId);
     this.clearResolvedRouteCache();
+    this.observability.recordAuditEventSafe({
+      actor_user_id: actorUserId,
+      app_id: appId,
+      action: existing[0] ? 'ai_app_model_route.update' : 'ai_app_model_route.create',
+      resource_type: 'ai_app_model_route',
+      resource_id: `${appId}:${globalModelId}`,
+      before: existing[0] || null,
+      after: {
+        app_id: appId,
+        global_model_id: globalModelId,
+        source_id: sourceId,
+        is_active: isActive,
+        request_overrides: requestOverrides,
+      },
+      metadata: {
+        model_id: globalModelId,
+        source_id: sourceId,
+        is_active: isActive,
+      },
+    });
     const matched = routes.items.find((item: any) => item.model_id === globalModelId);
     if (!matched) {
       throw new NotFoundException('App model route not found after save');
@@ -2304,6 +2477,15 @@ export class AiRoutingService implements OnModuleInit {
       throw new NotFoundException('App model route override not found');
     }
     this.clearResolvedRouteCache();
+    this.observability.recordAuditEventSafe({
+      app_id: appId,
+      action: 'ai_app_model_route.delete',
+      resource_type: 'ai_app_model_route',
+      resource_id: `${appId}:${globalModelId}`,
+      metadata: {
+        model_id: globalModelId,
+      },
+    });
     return { deleted: true };
   }
 
@@ -2367,6 +2549,23 @@ export class AiRoutingService implements OnModuleInit {
 
     const defaults = await this.listAppCapabilityDefaults(appId);
     this.clearResolvedRouteCache();
+    this.observability.recordAuditEventSafe({
+      actor_user_id: actorUserId,
+      app_id: appId,
+      action: existing[0] ? 'ai_app_capability_default.update' : 'ai_app_capability_default.create',
+      resource_type: 'ai_app_capability_default',
+      resource_id: `${appId}:${capability}`,
+      before: existing[0] || null,
+      after: {
+        app_id: appId,
+        capability,
+        global_model_id: modelId,
+      },
+      metadata: {
+        capability,
+        model_id: modelId,
+      },
+    });
     const matched = defaults.items.find((item: any) => item.capability === capability);
     if (!matched) {
       throw new NotFoundException('App capability default not found after save');
@@ -2384,6 +2583,15 @@ export class AiRoutingService implements OnModuleInit {
       capability,
     );
     this.clearResolvedRouteCache();
+    this.observability.recordAuditEventSafe({
+      app_id: appId,
+      action: 'ai_app_capability_default.delete',
+      resource_type: 'ai_app_capability_default',
+      resource_id: `${appId}:${capability}`,
+      metadata: {
+        capability,
+      },
+    });
     return { deleted: true };
   }
 
@@ -3645,7 +3853,9 @@ export class AiRoutingService implements OnModuleInit {
 
   private async applyRotatedApiKeyToRoute(route: ResolvedAiRoute): Promise<ResolvedAiRoute> {
     const cloned = this.cloneResolvedRoute(route);
-    cloned.source.api_key = await this.selectNextSourceApiKey(cloned.source.id, cloned.source.api_key);
+    const selected = await this.selectNextSourceApiKey(cloned.source.id, cloned.source.api_key);
+    cloned.source.api_key = selected.apiKey;
+    cloned.source.api_key_id = selected.apiKeyId;
     return cloned;
   }
 
@@ -3909,16 +4119,16 @@ export class AiRoutingService implements OnModuleInit {
     return primary?.api_key || fallbackApiKey;
   }
 
-  private async selectNextSourceApiKey(sourceId: string, fallbackApiKey: string): Promise<string> {
+  private async selectNextSourceApiKey(sourceId: string, fallbackApiKey: string): Promise<{ apiKey: string; apiKeyId: string | null }> {
     const activeKeys = await this.listActiveSourceApiKeysForRotation(sourceId);
     if (!activeKeys.length) {
-      return fallbackApiKey;
+      return { apiKey: fallbackApiKey, apiKeyId: null };
     }
     const current = this.sourceApiKeyRotationCounters.get(sourceId) || 0;
     const selected = activeKeys[current % activeKeys.length];
     this.sourceApiKeyRotationCounters.set(sourceId, (current + 1) % activeKeys.length);
     this.touchSourceApiKeyLastUsed(selected.id);
-    return selected.api_key || fallbackApiKey;
+    return { apiKey: selected.api_key || fallbackApiKey, apiKeyId: selected.id };
   }
 
   private async listActiveSourceApiKeysForRotation(sourceId: string): Promise<AiGlobalSourceApiKeyRow[]> {
@@ -4392,6 +4602,19 @@ export class AiRoutingService implements OnModuleInit {
           actorUserId,
         );
       }
+    });
+    this.observability.recordAuditEventSafe({
+      actor_user_id: actorUserId,
+      app_id: appIdValue,
+      action: appIdValue ? 'ai_app_model_source_routes.replace' : 'ai_model_source_routes.replace',
+      resource_type: appIdValue ? 'ai_app_model_source_routes' : 'ai_model_source_routes',
+      resource_id: modelId,
+      after: normalized,
+      metadata: {
+        model_id: modelId,
+        app_id: appIdValue,
+        route_count: normalized.length,
+      },
     });
     return this.listModelSourceRoutes(modelId, appId, true);
   }
