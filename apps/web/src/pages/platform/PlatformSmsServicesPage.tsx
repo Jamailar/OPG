@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import {
   PlatformSmsEventItem,
   PlatformSmsProviderCatalogItem,
@@ -237,6 +237,34 @@ const SECRET_CONFIG_KEYS = [
   'secret_access_key',
 ];
 
+const SIGNATURE_OPTIONAL_PROVIDER_TYPES = new Set<PlatformSmsProviderType>([
+  'TWILIO_SMS',
+  'VONAGE_SMS',
+  'MESSAGEBIRD_SMS',
+  'PLIVO_SMS',
+  'AWS_SNS',
+]);
+
+const TEMPLATE_ID_PROVIDER_TYPES = new Set<PlatformSmsProviderType>([
+  'ALIYUN_SMS',
+  'TENCENT_SMS',
+  'HUAWEI_SMS',
+  'VOLCENGINE_SMS',
+]);
+
+const providerUsesSignature = (type: PlatformSmsProviderType) => !SIGNATURE_OPTIONAL_PROVIDER_TYPES.has(type);
+
+const getTemplateCodeLabel = (type: PlatformSmsProviderType) =>
+  TEMPLATE_ID_PROVIDER_TYPES.has(type) ? '模板 ID' : '模板编码';
+
+const getTemplatePlaceholder = (type: PlatformSmsProviderType) => {
+  if (type === 'ALIYUN_SMS') return '例如：SMS_123456789';
+  if (type === 'TENCENT_SMS') return '例如：1234567';
+  if (type === 'HUAWEI_SMS') return '例如：xxxxxxxxxxxxxxxx';
+  if (type === 'VOLCENGINE_SMS') return '例如：ST_xxxxx';
+  return '例如：login_code';
+};
+
 const createProviderConfigByType = (type: PlatformSmsProviderType): PlatformSmsProviderConfig => ({ ...DEFAULT_PROVIDER_CONFIGS[type] });
 
 const getDefaultDispatchMode = (type: PlatformSmsProviderType) =>
@@ -371,7 +399,9 @@ export default function PlatformSmsServicesPage() {
   const [eventsTotal, setEventsTotal] = useState(0);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [selectedProviderId, setSelectedProviderId] = useState('');
+  const [expandedProviderIds, setExpandedProviderIds] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<SmsWorkspaceTab>('providers');
+  void setActiveTab;
   const [editorOpen, setEditorOpen] = useState<SmsWorkspaceTab | ''>('');
 
   const [providerForm, setProviderForm] = useState<SmsProviderForm>(EMPTY_PROVIDER_FORM);
@@ -456,6 +486,14 @@ export default function PlatformSmsServicesPage() {
         }
         return providerItems[0]?.id || '';
       });
+      setExpandedProviderIds((current) => {
+        const validIds = new Set(providerItems.map((item) => item.id));
+        const next = new Set(Array.from(current).filter((id) => validIds.has(id)));
+        if (!next.size && providerItems[0]?.id) {
+          next.add(providerItems[0].id);
+        }
+        return next;
+      });
     } catch (error: any) {
       setMessage({ type: 'error', text: pickApiErrorMessage(error, '加载短信配置失败') });
     } finally {
@@ -517,16 +555,30 @@ export default function PlatformSmsServicesPage() {
     setEditorOpen('providers');
   };
 
-  const openCreateSignature = () => {
+  const openCreateSignature = (providerId = selectedProviderId) => {
     setSignatureEditing(false);
-    setSignatureForm({ ...EMPTY_SIGNATURE_FORM, provider_id: selectedProviderId });
+    setSelectedProviderId(providerId);
+    setSignatureForm({ ...EMPTY_SIGNATURE_FORM, provider_id: providerId });
     setEditorOpen('signatures');
   };
 
-  const openCreateTemplate = () => {
+  const openCreateTemplate = (providerId = selectedProviderId) => {
     setTemplateEditing(false);
-    setTemplateForm({ ...EMPTY_TEMPLATE_FORM, provider_id: selectedProviderId });
+    setSelectedProviderId(providerId);
+    setTemplateForm({ ...EMPTY_TEMPLATE_FORM, provider_id: providerId });
     setEditorOpen('templates');
+  };
+
+  const toggleProviderExpanded = (providerId: string) => {
+    setExpandedProviderIds((current) => {
+      const next = new Set(current);
+      if (next.has(providerId)) {
+        next.delete(providerId);
+      } else {
+        next.add(providerId);
+      }
+      return next;
+    });
   };
 
   const onProviderTypeChange = (providerType: PlatformSmsProviderType) => {
@@ -760,24 +812,27 @@ export default function PlatformSmsServicesPage() {
           <h1>短信服务</h1>
           <p>配置短信通道、签名和验证码模板。</p>
         </div>
-        <button className="btn btn-secondary btn-sm" onClick={activeTab === 'events' ? loadEvents : loadData} disabled={loading || eventsLoading}>
-          {loading || eventsLoading ? '刷新中...' : '刷新'}
-        </button>
+        <div className="btn-group">
+          <button className="btn btn-secondary btn-sm" onClick={loadData} disabled={loading || eventsLoading}>
+            {loading || eventsLoading ? '刷新中...' : '刷新'}
+          </button>
+          <button className="btn btn-sm" type="button" onClick={openCreateProvider}>
+            新建供应商
+          </button>
+        </div>
       </div>
 
       {message && <div className={`alert alert-${message.type}`}>{message.text}</div>}
 
       <section className="sms-workspace-tabs">
         {smsTabs.map((item) => (
-          <button
+          <div
             key={item.key}
-            type="button"
-            className={`sms-workspace-tab ${activeTab === item.key ? 'active' : ''}`}
-            onClick={() => setActiveTab(item.key)}
+            className={`sms-workspace-tab ${item.key === 'providers' ? 'active' : ''}`}
           >
             <span>{item.label}</span>
             <strong>{item.active}/{item.count}</strong>
-          </button>
+          </div>
         ))}
       </section>
 
@@ -786,9 +841,6 @@ export default function PlatformSmsServicesPage() {
         <section className="card sms-list-card">
           <div className="platform-section-head">
             <h3>短信服务列表</h3>
-            <button className="btn btn-sm" type="button" onClick={openCreateProvider}>
-              新建
-            </button>
           </div>
 
           <div className="platform-api-table-wrap">
@@ -804,39 +856,116 @@ export default function PlatformSmsServicesPage() {
                 </tr>
               </thead>
               <tbody>
-                {providers.map((item) => (
-                  <tr key={item.id} className={selectedProviderId === item.id ? 'table-row-selected' : ''}>
-                    <td>{item.name}</td>
-                    <td>{providerCatalogMap.get(item.provider_type)?.label || item.provider_label || SMS_PROVIDER_LABELS[item.provider_type] || item.provider_type}</td>
-                    <td>
-                      <span className={`status-tag ${item.is_active ? 'success' : 'warning'}`}>
-                        {item.is_active ? 'ACTIVE' : 'INACTIVE'}
-                      </span>
-                    </td>
-                    <td>{item.is_default ? '是' : '否'}</td>
-                    <td>{item.updated_at ? new Date(item.updated_at).toLocaleString() : '-'}</td>
-                    <td>
-                      <div className="btn-group">
-                        <button className="btn btn-secondary btn-sm" onClick={() => setSelectedProviderId(item.id)}>
-                          选中
-                        </button>
-                        <button className="btn btn-secondary btn-sm" onClick={() => editProvider(item)}>
-                          编辑
-                        </button>
-                        <button
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => void testProvider(item)}
-                          disabled={testingProviderId === item.id}
-                        >
-                          {testingProviderId === item.id ? '测试中...' : '连通性测试'}
-                        </button>
-                        <button className="btn btn-danger btn-sm" onClick={() => void deleteProvider(item)}>
-                          删除
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {providers.map((item) => {
+                  const providerSignatures = signatures.filter((signature) => signature.provider_id === item.id);
+                  const providerTemplates = templates.filter((template) => template.provider_id === item.id);
+                  const expanded = expandedProviderIds.has(item.id);
+                  const signatureEnabled = providerUsesSignature(item.provider_type);
+                  return (
+                    <Fragment key={item.id}>
+                      <tr className={`sms-provider-row ${selectedProviderId === item.id ? 'table-row-selected' : ''}`}>
+                        <td>
+                          <button
+                            className="sms-provider-toggle"
+                            type="button"
+                            onClick={() => toggleProviderExpanded(item.id)}
+                            aria-label={expanded ? '收起供应商配置' : '展开供应商配置'}
+                          >
+                            {expanded ? '−' : '+'}
+                          </button>
+                          <span>{item.name}</span>
+                        </td>
+                        <td>{providerCatalogMap.get(item.provider_type)?.label || item.provider_label || SMS_PROVIDER_LABELS[item.provider_type] || item.provider_type}</td>
+                        <td>
+                          <span className={`status-tag ${item.is_active ? 'success' : 'warning'}`}>
+                            {item.is_active ? 'ACTIVE' : 'INACTIVE'}
+                          </span>
+                        </td>
+                        <td>{item.is_default ? '是' : '否'}</td>
+                        <td>{item.updated_at ? new Date(item.updated_at).toLocaleString() : '-'}</td>
+                        <td>
+                          <div className="btn-group sms-row-actions">
+                            <button className="btn btn-secondary btn-sm" onClick={() => editProvider(item)}>
+                              编辑
+                            </button>
+                            <button
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => void testProvider(item)}
+                              disabled={testingProviderId === item.id}
+                            >
+                              {testingProviderId === item.id ? '测试中...' : '测试'}
+                            </button>
+                            <button className="btn btn-danger btn-sm" onClick={() => void deleteProvider(item)}>
+                              删除
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                      {expanded && (
+                        <tr key={`${item.id}-details`} className="sms-provider-detail-row">
+                          <td colSpan={6}>
+                            <div className="sms-provider-detail">
+                              <div className="sms-provider-detail-head">
+                                <div>
+                                  <strong>签名</strong>
+                                  <span>{signatureEnabled ? `${providerSignatures.length} 个` : '当前供应商发送时不使用独立签名'}</span>
+                                </div>
+                                {signatureEnabled && (
+                                  <button className="btn btn-secondary btn-sm" type="button" onClick={() => openCreateSignature(item.id)}>
+                                    添加签名
+                                  </button>
+                                )}
+                              </div>
+                              {signatureEnabled && (
+                                <div className="sms-chip-list">
+                                  {providerSignatures.map((signature) => (
+                                    <div className="sms-config-chip" key={signature.id}>
+                                      <span>{signature.sign_name}</span>
+                                      {signature.is_default && <em>默认</em>}
+                                      <button type="button" onClick={() => editSignature(signature)}>编辑</button>
+                                      <button type="button" onClick={() => void deleteSignature(signature)}>删除</button>
+                                    </div>
+                                  ))}
+                                  {!providerSignatures.length && <span className="sms-empty-inline">暂无签名</span>}
+                                </div>
+                              )}
+
+                              <div className="sms-provider-detail-head">
+                                <div>
+                                  <strong>模板</strong>
+                                  <span>{providerTemplates.length} 个</span>
+                                </div>
+                                <button className="btn btn-secondary btn-sm" type="button" onClick={() => openCreateTemplate(item.id)}>
+                                  添加模板
+                                </button>
+                              </div>
+                              <div className="sms-template-list">
+                                {providerTemplates.map((template) => (
+                                  <div className="sms-template-row" key={template.id}>
+                                    <div>
+                                      <strong>{template.template_code}</strong>
+                                      <span>{template.template_name || pickTemplateMessage(template.meta) || '未填写模板内容'}</span>
+                                    </div>
+                                    <div className="btn-group">
+                                      {template.is_default && <span className="status-tag success">默认</span>}
+                                      <button className="btn btn-secondary btn-sm" type="button" onClick={() => editTemplate(template)}>
+                                        编辑
+                                      </button>
+                                      <button className="btn btn-danger btn-sm" type="button" onClick={() => void deleteTemplate(template)}>
+                                        删除
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                                {!providerTemplates.length && <span className="sms-empty-inline">暂无模板</span>}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
                 {!providers.length && (
                   <tr>
                     <td colSpan={6}>暂无短信服务配置</td>
@@ -1123,6 +1252,199 @@ export default function PlatformSmsServicesPage() {
       </div>
       )}
 
+      {editorOpen === 'signatures' && (
+        <div className="modal-overlay" onClick={signatureSaving ? undefined : resetSignatureForm}>
+          <section className="modal modal-lg sms-editor-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="platform-section-head">
+              <h3>{signatureEditing ? '编辑短信签名' : '创建短信签名'}</h3>
+              <button className="btn btn-secondary btn-sm" type="button" onClick={resetSignatureForm} disabled={signatureSaving}>
+                关闭
+              </button>
+            </div>
+
+            <form onSubmit={saveSignature} className="platform-form-grid">
+              <div className="form-group platform-form-span-2">
+                <label>所属短信供应商</label>
+                <select
+                  value={signatureForm.provider_id || selectedProviderId}
+                  onChange={(e) => setSignatureForm((prev) => ({ ...prev, provider_id: e.target.value }))}
+                  required
+                >
+                  <option value="">请选择</option>
+                  {providers.filter((item) => providerUsesSignature(item.provider_type)).map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name} ({SMS_PROVIDER_LABELS[item.provider_type] || item.provider_type})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group platform-form-span-2">
+                <label>签名名称</label>
+                <input
+                  value={signatureForm.sign_name}
+                  onChange={(e) => setSignatureForm((prev) => ({ ...prev, sign_name: e.target.value }))}
+                  placeholder="例如：OPG"
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={signatureForm.is_active}
+                    onChange={(e) => setSignatureForm((prev) => ({ ...prev, is_active: e.target.checked }))}
+                  />
+                  启用签名
+                </label>
+              </div>
+
+              <div className="form-group">
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={signatureForm.is_default}
+                    onChange={(e) => setSignatureForm((prev) => ({ ...prev, is_default: e.target.checked }))}
+                  />
+                  设为默认
+                </label>
+              </div>
+
+              <div className="form-group platform-form-span-2">
+                <label>备注</label>
+                <input
+                  value={signatureForm.notes}
+                  onChange={(e) => setSignatureForm((prev) => ({ ...prev, notes: e.target.value }))}
+                  placeholder="可选"
+                />
+              </div>
+
+              <div className="platform-form-actions platform-form-span-2">
+                <button className="btn" type="submit" disabled={signatureSaving || !providers.length}>
+                  {signatureSaving ? '保存中...' : signatureEditing ? '保存更新' : '创建短信签名'}
+                </button>
+                <button className="btn btn-secondary" type="button" onClick={resetSignatureForm} disabled={signatureSaving}>
+                  取消
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {editorOpen === 'templates' && (
+        <div className="modal-overlay" onClick={templateSaving ? undefined : resetTemplateForm}>
+          <section className="modal modal-lg sms-editor-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="platform-section-head">
+              <h3>{templateEditing ? '编辑短信模板' : '登记短信模板'}</h3>
+              <button className="btn btn-secondary btn-sm" type="button" onClick={resetTemplateForm} disabled={templateSaving}>
+                关闭
+              </button>
+            </div>
+
+            <form onSubmit={saveTemplate} className="platform-form-grid">
+              <div className="form-group platform-form-span-2">
+                <label>所属短信供应商</label>
+                <select
+                  value={templateForm.provider_id || selectedProviderId}
+                  onChange={(e) => setTemplateForm((prev) => ({ ...prev, provider_id: e.target.value }))}
+                  required
+                >
+                  <option value="">请选择</option>
+                  {providers.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name} ({SMS_PROVIDER_LABELS[item.provider_type] || item.provider_type})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label>
+                  {getTemplateCodeLabel(providers.find((item) => item.id === (templateForm.provider_id || selectedProviderId))?.provider_type || 'GENERIC_API')}
+                </label>
+                <input
+                  value={templateForm.template_code}
+                  onChange={(e) => setTemplateForm((prev) => ({ ...prev, template_code: e.target.value }))}
+                  placeholder={getTemplatePlaceholder(providers.find((item) => item.id === (templateForm.provider_id || selectedProviderId))?.provider_type || 'GENERIC_API')}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label>模板名称</label>
+                <input
+                  value={templateForm.template_name}
+                  onChange={(e) => setTemplateForm((prev) => ({ ...prev, template_name: e.target.value }))}
+                  placeholder="例如：登录验证码"
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={templateForm.is_active}
+                    onChange={(e) => setTemplateForm((prev) => ({ ...prev, is_active: e.target.checked }))}
+                  />
+                  启用模板
+                </label>
+              </div>
+
+              <div className="form-group">
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={templateForm.is_default}
+                    onChange={(e) => setTemplateForm((prev) => ({ ...prev, is_default: e.target.checked }))}
+                  />
+                  设为默认
+                </label>
+              </div>
+
+              <div className="form-group platform-form-span-2">
+                <label>短信内容</label>
+                <textarea
+                  rows={3}
+                  value={templateForm.message_template}
+                  onChange={(e) => setTemplateForm((prev) => ({ ...prev, message_template: e.target.value }))}
+                  placeholder="Your verification code is {{code}}."
+                />
+              </div>
+
+              <div className="form-group platform-form-span-2">
+                <label>模板变量示例（JSON）</label>
+                <textarea
+                  rows={6}
+                  value={templateForm.variables_example_json}
+                  onChange={(e) => setTemplateForm((prev) => ({ ...prev, variables_example_json: e.target.value }))}
+                  placeholder='{\n  "code": "123456"\n}'
+                />
+              </div>
+
+              <div className="form-group platform-form-span-2">
+                <label>备注</label>
+                <input
+                  value={templateForm.notes}
+                  onChange={(e) => setTemplateForm((prev) => ({ ...prev, notes: e.target.value }))}
+                  placeholder="可选"
+                />
+              </div>
+
+              <div className="platform-form-actions platform-form-span-2">
+                <button className="btn" type="submit" disabled={templateSaving || !providers.length}>
+                  {templateSaving ? '保存中...' : templateEditing ? '保存更新' : '创建短信模板'}
+                </button>
+                <button className="btn btn-secondary" type="button" onClick={resetTemplateForm} disabled={templateSaving}>
+                  取消
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
       {activeTab === 'signatures' && (
       <div className="platform-grid-two tenants-layout sms-workbench">
         <section className="card sms-list-card">
@@ -1137,7 +1459,7 @@ export default function PlatformSmsServicesPage() {
                   </option>
                 ))}
               </select>
-              <button className="btn btn-sm" type="button" onClick={openCreateSignature} disabled={!providers.length}>
+              <button className="btn btn-sm" type="button" onClick={() => openCreateSignature()} disabled={!providers.length}>
                 新建
               </button>
             </div>
@@ -1287,7 +1609,7 @@ export default function PlatformSmsServicesPage() {
                   </option>
                 ))}
               </select>
-              <button className="btn btn-sm" type="button" onClick={openCreateTemplate} disabled={!providers.length}>
+              <button className="btn btn-sm" type="button" onClick={() => openCreateTemplate()} disabled={!providers.length}>
                 新建
               </button>
             </div>
