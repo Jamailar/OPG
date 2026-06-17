@@ -5,7 +5,7 @@ FROM node:${NODE_VERSION} AS web-build
 WORKDIR /app/apps/web
 
 COPY apps/web/package.json apps/web/package-lock.json ./
-RUN npm ci
+RUN npm ci --include=dev
 
 COPY apps/web ./
 RUN npm run build
@@ -19,7 +19,7 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 COPY services/gateway/package.json services/gateway/package-lock.json ./
-RUN npm ci
+RUN npm ci --include=dev
 
 COPY services/gateway ./
 RUN npx prisma generate
