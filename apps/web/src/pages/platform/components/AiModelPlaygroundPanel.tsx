@@ -55,15 +55,6 @@ const PLAYGROUND_CAPABILITY_OPTIONS: Array<{ value: CapabilityFilter; label: str
   { value: 'embedding', label: '向量' },
 ];
 
-const CAPABILITY_DESCRIPTIONS: Record<PlatformAiModelItem['capability'], string> = {
-  chat: '编写提示词并检查回复结构、稳定性和风格控制。',
-  embedding: '输入文本并快速检查向量维度与返回片段。',
-  tts: '测试语音风格、输出格式和播放效果。',
-  stt: '上传音频，验证转录质量、停顿和专有名词识别。',
-  image: '验证提示词、负向提示词和尺寸设置对图片结果的影响。',
-  video: '提交视频任务，观察任务状态、结果链接和生成稳定性。',
-};
-
 const IMAGE_SIZE_OPTIONS = ['1024x1024', '1280x720', '720x1280', '1536x1024'];
 const VIDEO_RESOLUTION_OPTIONS = ['480P', '720P', '1080P'];
 const VIDEO_DURATION_OPTIONS = [5, 10];
@@ -197,100 +188,6 @@ export default function AiModelPlaygroundPanel({
   );
 
   const currentCapability = selectedModel?.capability || 'chat';
-
-  const currentTemplates = useMemo(() => {
-    const base = {
-      chat: [
-        {
-          label: '客服回复',
-          apply: () => {
-            setChatSystemPrompt('你是专业客服助手，回答要明确、简洁、可执行。');
-            setChatPrompt('用户说：支付成功了，但会员没有到账。请给出排查步骤。');
-          },
-        },
-        {
-          label: '结构化输出',
-          apply: () => {
-            setChatSystemPrompt('请始终输出 JSON，包含 title、risk_level、actions 三个字段。');
-            setChatPrompt('分析一条“视频生成失败，任务状态卡住 20 分钟”的工单。');
-          },
-        },
-      ],
-      embedding: [
-        {
-          label: '检索样本',
-          apply: () => setEmbeddingInput('如何比较不同图片生成模型的细节还原能力'),
-        },
-        {
-          label: '分类样本',
-          apply: () => setEmbeddingInput('订单退款异常排查流程'),
-        },
-      ],
-      tts: [
-        {
-          label: '播报短句',
-          apply: () => {
-            setTtsText('欢迎进入平台 AI 调试台，本次测试用于检查语音质量和稳定性。');
-            setTtsFormat('mp3');
-          },
-        },
-        {
-          label: '长句停顿',
-          apply: () => {
-            setTtsText('今天我们需要重点检查三件事：发音是否自然，停顿是否稳定，以及长句末尾是否被截断。');
-            setTtsFormat('wav');
-          },
-        },
-      ],
-      stt: [
-        {
-          label: '转录提示',
-          apply: () => setMessage({ type: 'success', text: '上传一段包含口语停顿和专有名词的音频，更容易看出 STT 真实水平。' }),
-        },
-      ],
-      image: [
-        {
-          label: '商品主图',
-          apply: () => {
-            setImagePrompt('一张护肤品电商主图，白色背景，玻璃瓶身，柔和高光，商业摄影质感');
-            setImageNegativePrompt('模糊，低清晰度，畸变，多余物体');
-            setImageSize('1024x1024');
-          },
-        },
-        {
-          label: '海报风格',
-          apply: () => {
-            setImagePrompt('一张科技产品发布海报，强烈视觉中心，干净排版感，电影级灯光');
-            setImageNegativePrompt('文字乱码，重复元素，杂乱背景');
-            setImageSize('1280x720');
-          },
-        },
-      ],
-      video: [
-        {
-          label: '产品展示',
-          apply: () => {
-            setVideoPrompt('桌面上的智能硬件产品缓慢旋转展示，镜头平稳推进，背景干净，光影自然');
-            setVideoNegativePrompt('抖动，闪烁，畸形，模糊');
-            setVideoResolution('720P');
-            setVideoDuration('5');
-            setVideoMode('async');
-          },
-        },
-        {
-          label: '人物口播',
-          apply: () => {
-            setVideoPrompt('人物正面口播镜头，嘴型自然，视线稳定，背景简洁，光线均匀');
-            setVideoNegativePrompt('肢体扭曲，嘴型错乱，背景闪烁');
-            setVideoResolution('1080P');
-            setVideoDuration('5');
-            setVideoMode('async');
-          },
-        },
-      ],
-    };
-    return base[currentCapability];
-  }, [currentCapability]);
 
   const buildExtraPayload = () => {
     const raw = extraPayloadJson.trim();
@@ -483,7 +380,6 @@ export default function AiModelPlaygroundPanel({
   const audioPreviewSrc = result?.audio_url
     || (result?.audio_base64 ? `data:${result.audio_mime_type || 'audio/mpeg'};base64,${result.audio_base64}` : null);
 
-  const currentCapabilityDescription = CAPABILITY_DESCRIPTIONS[currentCapability];
   const currentEndpointPath = result?.route.endpoint_path || selectedModel?.endpoint_path || '-';
   const resultStatusTone = result?.task_status
     ? (String(result.task_status).toUpperCase().includes('FAIL') ? 'error' : 'success')
@@ -492,28 +388,6 @@ export default function AiModelPlaygroundPanel({
   return (
     <div className="ai-playground-workbench">
       <section className="card ai-playground-shell">
-        <div className="ai-playground-shell-top">
-          <div className="ai-playground-shell-copy">
-            <span className="ai-playground-kicker">AI Playground</span>
-            <h2>像真正使用模型一样，直接验证输出质量</h2>
-            <p>选择应用、模型和供应商，发送真实请求，立即查看文本、图片、音频、视频和调试细节。</p>
-          </div>
-          <div className="ai-playground-metrics" aria-label="playground-overview">
-            <article className="ai-playground-metric">
-              <span>应用</span>
-              <strong>{apps.length}</strong>
-            </article>
-            <article className="ai-playground-metric">
-              <span>模型</span>
-              <strong>{models.length}</strong>
-            </article>
-            <article className="ai-playground-metric">
-              <span>供应商</span>
-              <strong>{sources.length}</strong>
-            </article>
-          </div>
-        </div>
-
         <div className="ai-playground-capability-tabs" role="tablist" aria-label="能力筛选">
           {PLAYGROUND_CAPABILITY_OPTIONS.map((item) => (
             <button
@@ -575,7 +449,7 @@ export default function AiModelPlaygroundPanel({
 
         <div className="ai-playground-meta-strip">
           <div className="ai-playground-meta-chip">
-            <span>当前能力</span>
+            <span>能力</span>
             <strong>{selectedModel ? CAPABILITY_LABELS[selectedModel.capability] : '-'}</strong>
           </div>
           <div className="ai-playground-meta-chip">
@@ -596,21 +470,13 @@ export default function AiModelPlaygroundPanel({
       {message ? <div className={`alert alert-${message.type}`}>{message.text}</div> : null}
 
       {!apps.length || !models.length ? (
-        <div className="ai-hub-empty">需要先准备应用和模型，Playground 才能开始调试。</div>
+        <div className="ai-hub-empty">无可用应用或模型</div>
       ) : (
         <div className="ai-playground-stage">
           <section className="card ai-playground-editor-panel">
             <div className="ai-playground-panel-head">
               <div>
                 <h3>{selectedModel ? CAPABILITY_LABELS[selectedModel.capability] : '输入面板'}</h3>
-                <p>{currentCapabilityDescription}</p>
-              </div>
-              <div className="ai-playground-template-grid">
-                {currentTemplates.map((item) => (
-                  <button key={item.label} type="button" className="ai-playground-template-pill" onClick={item.apply}>
-                    {item.label}
-                  </button>
-                ))}
               </div>
             </div>
 
@@ -623,7 +489,6 @@ export default function AiModelPlaygroundPanel({
                       rows={4}
                       value={chatSystemPrompt}
                       onChange={(event) => setChatSystemPrompt(event.target.value)}
-                      placeholder="可选"
                     />
                   </label>
                   <label className="ai-playground-field span-2">
@@ -676,8 +541,8 @@ export default function AiModelPlaygroundPanel({
                     <input type="file" accept="audio/*" onChange={handleAudioUpload} />
                   </label>
                   <div className="ai-playground-upload-card span-2">
-                    <strong>{sttAsset ? sttAsset.name : '未选择音频文件'}</strong>
-                    <span>{sttAsset ? `${sttAsset.mimeType} · ${(sttAsset.base64.length / 1024).toFixed(1)} KB(base64)` : '支持直接上传音频做转录测试'}</span>
+                    <strong>{sttAsset ? sttAsset.name : '-'}</strong>
+                    <span>{sttAsset ? `${sttAsset.mimeType} · ${(sttAsset.base64.length / 1024).toFixed(1)} KB(base64)` : '-'}</span>
                   </div>
                 </div>
               ) : null}
@@ -690,7 +555,7 @@ export default function AiModelPlaygroundPanel({
                   </label>
                   <label className="ai-playground-field span-2">
                     <span>负向提示词</span>
-                    <textarea rows={5} value={imageNegativePrompt} onChange={(event) => setImageNegativePrompt(event.target.value)} placeholder="可选" />
+                    <textarea rows={5} value={imageNegativePrompt} onChange={(event) => setImageNegativePrompt(event.target.value)} />
                   </label>
                   <label className="ai-playground-field">
                     <span>尺寸</span>
@@ -717,7 +582,7 @@ export default function AiModelPlaygroundPanel({
                   </label>
                   <label className="ai-playground-field span-2">
                     <span>负向提示词</span>
-                    <textarea rows={5} value={videoNegativePrompt} onChange={(event) => setVideoNegativePrompt(event.target.value)} placeholder="可选" />
+                    <textarea rows={5} value={videoNegativePrompt} onChange={(event) => setVideoNegativePrompt(event.target.value)} />
                   </label>
                   <label className="ai-playground-field">
                     <span>分辨率</span>
@@ -753,14 +618,12 @@ export default function AiModelPlaygroundPanel({
             <div className="ai-playground-params-card">
               <div className="ai-playground-section-label">
                 <strong>额外参数</strong>
-                <span>需要覆盖默认请求参数时，再填写 JSON。</span>
               </div>
               <label className="ai-playground-field">
                 <textarea
                   rows={6}
                   value={extraPayloadJson}
                   onChange={(event) => setExtraPayloadJson(event.target.value)}
-                  placeholder='例如：{"temperature":0.2}'
                 />
               </label>
             </div>
@@ -771,7 +634,6 @@ export default function AiModelPlaygroundPanel({
               <div className="ai-playground-panel-head compact">
                 <div>
                   <h3>结果预览</h3>
-                  <p>先看输出，再决定是否继续微调参数。</p>
                 </div>
                 {result ? (
                   <div className="ai-playground-result-summary">
@@ -833,8 +695,7 @@ export default function AiModelPlaygroundPanel({
                   </div>
                 ) : (
                   <div className="ai-playground-empty-state">
-                    <strong>尚未运行</strong>
-                    <p>输入提示词并点击运行，这里会显示文本、图片、音频、视频或向量结果。</p>
+                    <strong>暂无结果</strong>
                   </div>
                 )}
               </div>
@@ -844,7 +705,6 @@ export default function AiModelPlaygroundPanel({
               <div className="ai-playground-panel-head compact">
                 <div>
                   <h3>诊断信息</h3>
-                  <p>确认路由、返回片段和原始响应。</p>
                 </div>
               </div>
 
@@ -880,7 +740,7 @@ export default function AiModelPlaygroundPanel({
                   </details>
                 </div>
               ) : (
-                <div className="ai-hub-empty">运行后可查看接口路径、响应片段和原始响应。</div>
+                <div className="ai-hub-empty">暂无诊断</div>
               )}
             </section>
 
@@ -888,11 +748,10 @@ export default function AiModelPlaygroundPanel({
               <div className="ai-playground-panel-head compact">
                 <div>
                   <h3>最近运行</h3>
-                  <p>快速回看最近几次结果。</p>
                 </div>
               </div>
               {runHistory.length === 0 ? (
-                <div className="ai-hub-empty">还没有运行记录</div>
+                <div className="ai-hub-empty">暂无记录</div>
               ) : (
                 <div className="ai-playground-history-list">
                   {runHistory.map((item) => (

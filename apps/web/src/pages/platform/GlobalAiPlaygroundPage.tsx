@@ -44,7 +44,6 @@ export default function GlobalAiPlaygroundPage() {
       <div className="ai-playground-page-head">
         <div>
           <h1>AI Playground</h1>
-          <p>直接调试文本、图片、语音、转录和视频模型，快速判断是否可以对外开放。</p>
         </div>
         <button className="btn btn-secondary btn-sm" onClick={loadData} disabled={loading}>
           {loading ? '刷新中...' : '刷新'}
