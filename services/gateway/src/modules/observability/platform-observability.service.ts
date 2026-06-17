@@ -286,7 +286,7 @@ export class PlatformObservabilityService implements OnModuleInit {
 
   private async getTableHealth(tableName: 'platform_request_events' | 'platform_audit_events') {
     const existsRows = (await this.prisma.$queryRawUnsafe(
-      `SELECT to_regclass($1::text) AS table_name`,
+      `SELECT to_regclass($1::text)::text AS table_name`,
       tableName,
     )) as Array<{ table_name: string | null }>;
     if (!existsRows[0]?.table_name) {
@@ -431,7 +431,7 @@ export class PlatformObservabilityService implements OnModuleInit {
   private async arePrerequisiteTablesReady(): Promise<boolean> {
     for (const tableName of ['apps', 'users']) {
       const rows = (await this.prisma.$queryRawUnsafe(
-        `SELECT to_regclass($1::text) AS table_name`,
+        `SELECT to_regclass($1::text)::text AS table_name`,
         tableName,
       )) as Array<{ table_name: string | null }>;
       if (!rows[0]?.table_name) {

@@ -632,7 +632,7 @@ export class AiGatewayObservabilityService implements OnModuleInit {
     ];
     for (const tableName of requiredTables) {
       const rows = (await this.prisma.$queryRawUnsafe(
-        `SELECT to_regclass($1::text) AS table_name`,
+        `SELECT to_regclass($1::text)::text AS table_name`,
         tableName,
       )) as Array<{ table_name: string | null }>;
       if (!rows[0]?.table_name) {
