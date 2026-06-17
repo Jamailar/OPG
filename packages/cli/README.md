@@ -19,8 +19,25 @@ The CLI reads `.env.local` and `.opg/opg.config.json`.
 - `OPG_BASE_URL`: Gateway base URL
 - `OPG_APP_SLUG`: App slug owned by the current tenant
 - `OPG_API_KEY`: App API key created in the OPG developer console
+- `OPG_PLATFORM_TOKEN`: Platform admin JWT for global control-plane tools
 
-`opg codex install` writes a Codex MCP config template that references `${OPG_API_KEY}` instead of writing the secret value.
+`opg codex install` writes a Codex MCP config template that references `${OPG_API_KEY}` and `${OPG_PLATFORM_TOKEN}` instead of writing secret values.
+
+## Platform Control Plane
+
+App SDK operations stay app-scoped. Global operations use the platform token:
+
+```bash
+opg platform apps list
+opg platform apps create --json '{"name":"Demo App","slug":"demo"}'
+opg platform runtime get
+opg platform runtime update --json '{"api_base_url":"https://opg.example.com"}'
+opg platform request --path /storage/providers --method GET
+```
+
+The MCP server also exposes platform tools for app creation, runtime settings,
+storage providers, AI sources/models, and a generic `opg_platform_request`
+escape hatch for other `/api/v1/platform-admin/*` endpoints.
 
 ## Codex Database Tools
 

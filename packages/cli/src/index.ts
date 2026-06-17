@@ -5,12 +5,13 @@ import path from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { createOpgClient, type OpgClient } from 'opg-sdk';
+import { createOpgClient, createOpgPlatformClient, type OpgClient, type OpgPlatformClient } from 'opg-sdk';
 
 type CliConfig = {
   baseUrl: string;
   app: string;
   apiKey?: string;
+  platformToken?: string;
 };
 
 const args = process.argv.slice(2);
@@ -36,6 +37,10 @@ async function main() {
   }
   if (command === 'db' || command === 'database') {
     await runDatabaseCommand(args.slice(1));
+    return;
+  }
+  if (command === 'platform') {
+    await runPlatformCommand(args.slice(1));
     return;
   }
   if (command === 'codex' && args[1] === 'install') {
@@ -96,6 +101,7 @@ async function installCodex(flags: Record<string, string>) {
           OPG_BASE_URL: config.baseUrl,
           OPG_APP_SLUG: config.app,
           OPG_API_KEY: '${OPG_API_KEY}',
+          OPG_PLATFORM_TOKEN: '${OPG_PLATFORM_TOKEN}',
         },
       },
     },
@@ -174,8 +180,63 @@ async function runDatabaseCommand(commandArgs: string[]) {
   throw new Error(`Unknown database command: ${subcommand}`);
 }
 
+async function runPlatformCommand(commandArgs: string[]) {
+  const resource = commandArgs[0] || 'apps';
+  const action = commandArgs[1] || 'list';
+  const flags = parseFlags(commandArgs.slice(2));
+  const client = await getPlatformClientFromLocalConfigWithFlagOverrides(flags);
+
+  if (resource === 'apps') {
+    if (action === 'list') {
+      printJson(await client.apps.list({ includeInactive: flags.includeInactive !== 'false' && flags['include-inactive'] !== 'false' }));
+      return;
+    }
+    if (action === 'get') {
+      const appId = flags.appId || flags['app-id'] || '';
+      if (!appId) throw new Error('Missing app id. Use: opg platform apps get --app-id <id>');
+      printJson(await client.apps.get(appId));
+      return;
+    }
+    if (action === 'create') {
+      printJson(await client.apps.create(parseJsonPayload(flags)));
+      return;
+    }
+    if (action === 'update') {
+      const appId = flags.appId || flags['app-id'] || '';
+      if (!appId) throw new Error('Missing app id. Use: opg platform apps update --app-id <id> --json {...}');
+      printJson(await client.apps.update(appId, parseJsonPayload(flags)));
+      return;
+    }
+  }
+
+  if (resource === 'runtime' || resource === 'runtime-settings') {
+    if (action === 'get') {
+      printJson(await client.runtimeSettings.get());
+      return;
+    }
+    if (action === 'update') {
+      printJson(await client.runtimeSettings.update(parseJsonPayload(flags)));
+      return;
+    }
+  }
+
+  if (resource === 'request') {
+    const path = flags.path || '';
+    if (!path) throw new Error('Missing platform path. Use: opg platform request --path /apps');
+    printJson(await client.request(path, {
+      method: (flags.method || 'GET').toUpperCase(),
+      query: flags.query ? JSON.parse(flags.query) : undefined,
+      body: flags.json ? JSON.parse(flags.json) : undefined,
+    }));
+    return;
+  }
+
+  throw new Error(`Unknown platform command: ${resource} ${action}`);
+}
+
 async function startMcpServer() {
   const client = await getClientFromConfig();
+  const platformClient = await getPlatformClientFromConfig();
   const server = new McpServer({
     name: 'opg-mcp-server',
     version: '0.1.0',
@@ -183,6 +244,158 @@ async function startMcpServer() {
   const registerTool = (name: string, config: Record<string, unknown>, handler: (input: any) => Promise<any>) => {
     (server as any).registerTool(name, config, handler);
   };
+
+  registerTool(
+    'opg_platform_apps_list',
+    {
+      title: 'List OPG Platform Apps',
+      description: 'List tenant apps from the global OPG platform control plane. Requires OPG_PLATFORM_TOKEN with platform admin access.',
+      inputSchema: {
+        includeInactive: z.boolean().default(true),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ includeInactive }: any) => toToolResult(await platformClient.apps.list({ includeInactive })),
+  );
+
+  registerTool(
+    'opg_platform_app_create',
+    {
+      title: 'Create OPG Platform App',
+      description: 'Create a tenant app from the global OPG platform control plane. Requires OPG_PLATFORM_TOKEN with platform admin access.',
+      inputSchema: {
+        payload: z.record(z.unknown()).describe('App creation payload accepted by POST /api/v1/platform-admin/apps.'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ payload }: any) => toToolResult(await platformClient.apps.create(payload)),
+  );
+
+  registerTool(
+    'opg_platform_app_update',
+    {
+      title: 'Update OPG Platform App',
+      description: 'Update a tenant app by id from the global OPG platform control plane.',
+      inputSchema: {
+        appId: z.string().min(1),
+        payload: z.record(z.unknown()),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ appId, payload }: any) => toToolResult(await platformClient.apps.update(appId, payload)),
+  );
+
+  registerTool(
+    'opg_platform_runtime_settings_get',
+    {
+      title: 'Get OPG Runtime Settings',
+      description: 'Read global runtime settings such as API base URL, CORS, payments scheduler, and integration settings.',
+      inputSchema: {},
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async () => toToolResult(await platformClient.runtimeSettings.get()),
+  );
+
+  registerTool(
+    'opg_platform_runtime_settings_update',
+    {
+      title: 'Update OPG Runtime Settings',
+      description: 'Update global runtime settings. Requires OPG_PLATFORM_TOKEN with platform admin access.',
+      inputSchema: {
+        payload: z.record(z.unknown()),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ payload }: any) => toToolResult(await platformClient.runtimeSettings.update(payload)),
+  );
+
+  registerTool(
+    'opg_platform_storage_providers_list',
+    {
+      title: 'List OPG Storage Providers',
+      description: 'List global object storage providers.',
+      inputSchema: {},
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async () => toToolResult(await platformClient.storageProviders.list()),
+  );
+
+  registerTool(
+    'opg_platform_storage_provider_create',
+    {
+      title: 'Create OPG Storage Provider',
+      description: 'Create a global object storage provider.',
+      inputSchema: {
+        payload: z.record(z.unknown()),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ payload }: any) => toToolResult(await platformClient.storageProviders.create(payload)),
+  );
+
+  registerTool(
+    'opg_platform_ai_sources_list',
+    {
+      title: 'List OPG AI Sources',
+      description: 'List global AI provider sources.',
+      inputSchema: {},
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async () => toToolResult(await platformClient.ai.sources.list()),
+  );
+
+  registerTool(
+    'opg_platform_ai_source_create',
+    {
+      title: 'Create OPG AI Source',
+      description: 'Create a global AI provider source.',
+      inputSchema: {
+        payload: z.record(z.unknown()),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ payload }: any) => toToolResult(await platformClient.ai.sources.create(payload)),
+  );
+
+  registerTool(
+    'opg_platform_ai_models_list',
+    {
+      title: 'List OPG AI Models',
+      description: 'List global AI model routes and defaults.',
+      inputSchema: {},
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async () => toToolResult(await platformClient.ai.models.list()),
+  );
+
+  registerTool(
+    'opg_platform_ai_model_create',
+    {
+      title: 'Create OPG AI Model',
+      description: 'Create a global AI model route.',
+      inputSchema: {
+        payload: z.record(z.unknown()),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ payload }: any) => toToolResult(await platformClient.ai.models.create(payload)),
+  );
+
+  registerTool(
+    'opg_platform_request',
+    {
+      title: 'Call OPG Platform API',
+      description: 'Call any /api/v1/platform-admin path using OPG_PLATFORM_TOKEN. Use specific tools first when available.',
+      inputSchema: {
+        method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).default('GET'),
+        path: z.string().min(1).describe('Path under /api/v1/platform-admin, for example /apps or /storage/providers.'),
+        query: z.record(z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
+        body: z.record(z.unknown()).optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ method, path, query, body }: any) => toToolResult(await platformClient.request(path, { method, query, body })),
+  );
 
   registerTool(
     'opg_manifest_get',
@@ -386,25 +599,38 @@ function toToolResult(data: unknown) {
 }
 
 async function getClientFromConfig() {
-  const config = await readLocalConfig();
-  return createOpgClient(config);
+  return createOpgClient(await readLocalConfig());
+}
+
+async function getPlatformClientFromConfig() {
+  return createOpgPlatformClient(await readLocalConfig());
 }
 
 function getClientFromFlags(commandArgs: string[]) {
-  return createOpgClient(readConfigFromFlags(parseFlags(commandArgs)));
+  return createOpgClient(requireAppConfig(readConfigFromFlags(parseFlags(commandArgs)), 'Missing OPG app slug. Pass --app or set OPG_APP_SLUG.'));
 }
 
 async function getClientFromLocalConfigWithFlagOverrides(flags: Record<string, string>) {
   const local = await readOptionalLocalConfig();
-  return createOpgClient({
+  return createOpgClient(requireAppConfig({
     baseUrl: flags.baseUrl || flags['base-url'] || local.baseUrl,
     app: flags.app || local.app,
     apiKey: flags.apiKey || flags['api-key'] || local.apiKey,
+    platformToken: flags.platformToken || flags['platform-token'] || local.platformToken,
+  }, 'Missing OPG app slug. Pass --app or set OPG_APP_SLUG.'));
+}
+
+async function getPlatformClientFromLocalConfigWithFlagOverrides(flags: Record<string, string>): Promise<OpgPlatformClient> {
+  const local = await readOptionalLocalConfig();
+  return createOpgPlatformClient({
+    baseUrl: flags.baseUrl || flags['base-url'] || local.baseUrl,
+    apiKey: flags.apiKey || flags['api-key'] || local.apiKey,
+    platformToken: flags.platformToken || flags['platform-token'] || local.platformToken,
   });
 }
 
 async function readLocalConfig(): Promise<CliConfig> {
-  return readConfigFromFlags(await readOptionalLocalConfig());
+  return readBaseConfig(await readOptionalLocalConfig());
 }
 
 async function readOptionalLocalConfig(): Promise<Record<string, string>> {
@@ -419,6 +645,7 @@ async function readOptionalLocalConfig(): Promise<Record<string, string>> {
     baseUrl: process.env.OPG_BASE_URL || envFile.OPG_BASE_URL || local.baseUrl || '',
     app: process.env.OPG_APP_SLUG || envFile.OPG_APP_SLUG || local.app || '',
     apiKey: process.env.OPG_API_KEY || envFile.OPG_API_KEY || local.apiKey || '',
+    platformToken: process.env.OPG_PLATFORM_TOKEN || envFile.OPG_PLATFORM_TOKEN || local.platformToken || '',
   };
 }
 
@@ -452,16 +679,33 @@ async function readDotEnvLocal(): Promise<Record<string, string>> {
 }
 
 function readConfigFromFlags(flags: Record<string, string>): CliConfig {
+  return requireAppConfig(readBaseConfig(flags), 'Missing OPG app slug. Pass --app or set OPG_APP_SLUG.');
+}
+
+function readBaseConfig(flags: Record<string, string>): CliConfig {
   const baseUrl = flags.baseUrl || flags['base-url'] || process.env.OPG_BASE_URL || '';
   const app = flags.app || process.env.OPG_APP_SLUG || '';
   const apiKey = flags.apiKey || flags['api-key'] || process.env.OPG_API_KEY || '';
+  const platformToken = flags.platformToken || flags['platform-token'] || process.env.OPG_PLATFORM_TOKEN || '';
   if (!baseUrl) {
     throw new Error('Missing OPG base URL. Pass --base-url or set OPG_BASE_URL.');
   }
-  if (!app) {
-    throw new Error('Missing OPG app slug. Pass --app or set OPG_APP_SLUG.');
+  return { baseUrl, app, apiKey, platformToken };
+}
+
+function requireAppConfig(config: CliConfig, message: string): CliConfig {
+  if (!config.app) {
+    throw new Error(message);
   }
-  return { baseUrl, app, apiKey };
+  return config;
+}
+
+function parseJsonPayload(flags: Record<string, string>) {
+  const raw = flags.json || flags.body || '';
+  if (!raw) {
+    throw new Error('Missing JSON payload. Use --json \'{"name":"Demo","slug":"demo"}\'.');
+  }
+  return JSON.parse(raw);
 }
 
 function parseFlags(commandArgs: string[]) {
@@ -511,6 +755,11 @@ Commands:
   opg init --base-url <url> --app <slug> --skip-manifest true
   opg manifest --base-url <url> --app <slug>
   opg smoke --base-url <url> --app <slug> --api-key <key>
+  opg platform apps list --base-url <url> --platform-token <jwt>
+  opg platform apps create --base-url <url> --platform-token <jwt> --json '{"name":"Demo","slug":"demo"}'
+  opg platform runtime get --base-url <url> --platform-token <jwt>
+  opg platform runtime update --base-url <url> --platform-token <jwt> --json '{"api_base_url":"https://opg.example.com"}'
+  opg platform request --path /storage/providers --method GET --base-url <url> --platform-token <jwt>
   opg db smoke --base-url <url> --app <slug> --api-key <key>
   opg db manifest --base-url <url> --app <slug> --api-key <key>
   opg db tables --base-url <url> --app <slug> --api-key <key>

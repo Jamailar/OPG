@@ -19,10 +19,48 @@ const models = await opg.ai.models();
 - `OPG_BASE_URL`: Gateway base URL, for example `https://api.example.com`
 - `OPG_APP_SLUG`: App slug owned by the current tenant
 - `OPG_API_KEY`: App API key created in the OPG developer console
+- `OPG_PLATFORM_TOKEN`: Platform admin JWT for global control-plane operations
 
 ## Codex
 
 Use `opg-dev-cli` to generate local config and install the Codex MCP bridge.
+
+## Global Platform Control Plane
+
+App API keys are intentionally app-scoped. To create apps or manage global
+providers, pass a platform admin token and use the platform client:
+
+```ts
+import { createOpgPlatformClient } from "opg-sdk";
+
+const platform = createOpgPlatformClient({
+  baseUrl: process.env.OPG_BASE_URL!,
+  platformToken: process.env.OPG_PLATFORM_TOKEN!,
+});
+
+await platform.apps.create({
+  name: "Demo App",
+  slug: "demo",
+});
+
+await platform.runtimeSettings.update({
+  api_base_url: "https://opg.example.com",
+  cors_origins: ["https://opg.example.com"],
+});
+
+await platform.storageProviders.create({
+  name: "Default OSS",
+  provider_type: "s3",
+  is_default: true,
+  config: {
+    endpoint: "https://s3.example.com",
+    bucket: "opg-assets",
+  },
+});
+```
+
+`createOpgClient()` also exposes `opg.platform` for processes that need both
+app-scoped API calls and platform administration.
 
 ## Database Workspace
 

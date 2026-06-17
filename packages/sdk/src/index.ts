@@ -2,8 +2,9 @@ export type OpgApiKeyProvider = string | (() => string | Promise<string>);
 
 export type OpgClientOptions = {
   baseUrl: string;
-  app: string;
+  app?: string;
   apiKey?: OpgApiKeyProvider;
+  platformToken?: OpgApiKeyProvider;
   fetch?: typeof fetch;
 };
 
@@ -49,7 +50,93 @@ type OpgClientInternals = {
   stream(path: string, options?: OpgRequestOptions): AsyncIterable<string>;
 };
 
+type OpgCrudClient = {
+  list(query?: Record<string, string | number | boolean | undefined | null>): Promise<Record<string, unknown>>;
+  create(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+  update(id: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+  delete(id: string): Promise<Record<string, unknown>>;
+  test?(idOrInput: string | Record<string, unknown>, input?: Record<string, unknown>): Promise<Record<string, unknown>>;
+};
+
+export type OpgPlatformClient = {
+  request<T = unknown>(path: string, options?: OpgRequestOptions): Promise<T>;
+  apps: {
+    list(query?: { includeInactive?: boolean; include_inactive?: boolean }): Promise<Record<string, unknown>>;
+    get(appId: string): Promise<Record<string, unknown>>;
+    create(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+    update(appId: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+    stats(appId: string): Promise<Record<string, unknown>>;
+    ai: {
+      modelRoutes(appId: string): Promise<Record<string, unknown>>;
+      upsertModelRoute(appId: string, modelId: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+      deleteModelRoute(appId: string, modelId: string): Promise<Record<string, unknown>>;
+      setModelVisibility(appId: string, modelId: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+      defaultModels(appId: string): Promise<Record<string, unknown>>;
+      setDefaultModel(appId: string, capability: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+      deleteDefaultModel(appId: string, capability: string): Promise<Record<string, unknown>>;
+    };
+  };
+  runtimeSettings: {
+    get(): Promise<Record<string, unknown>>;
+    update(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+  };
+  storageProviders: OpgCrudClient;
+  smtpProviders: OpgCrudClient;
+  integrationApiKeys: {
+    list(): Promise<Record<string, unknown>>;
+    create(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+    revoke(id: string): Promise<Record<string, unknown>>;
+  };
+  payments: {
+    methods: OpgCrudClient;
+  };
+  sms: {
+    providerCatalog(): Promise<Record<string, unknown>>;
+    providers: OpgCrudClient;
+    signatures: OpgCrudClient;
+    templates: OpgCrudClient;
+  };
+  oauth: {
+    wechatOpenApps: OpgCrudClient;
+    googleClients: OpgCrudClient;
+    githubApps: OpgCrudClient;
+    appleCredentials: OpgCrudClient;
+  };
+  email: {
+    cloudflareAccounts: OpgCrudClient & {
+      verifyToken(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+      sendingDomains(accountId: string): Promise<Record<string, unknown>>;
+    };
+    senders: OpgCrudClient;
+  };
+  proxies: OpgCrudClient & {
+    batchTest(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+    import(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+    export(): Promise<Record<string, unknown>>;
+    checkLogs(proxyId: string, query?: { limit?: number }): Promise<Record<string, unknown>>;
+  };
+  ai: {
+    sources: OpgCrudClient;
+    providerTemplates(): Promise<Record<string, unknown>>;
+    gatewayRuntime(): Promise<Record<string, unknown>>;
+    providerHealth(query?: Record<string, string | number | boolean | undefined | null>): Promise<Record<string, unknown>>;
+    requestEvents(query?: Record<string, string | number | boolean | undefined | null>): Promise<Record<string, unknown>>;
+    auditEvents(query?: Record<string, string | number | boolean | undefined | null>): Promise<Record<string, unknown>>;
+    models: OpgCrudClient & {
+      sourceRoutes(modelId: string): Promise<Record<string, unknown>>;
+      replaceSourceRoutes(modelId: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+      testBatch(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+      playground(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+      queryPlaygroundTask(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+    };
+    usageSummary(query?: Record<string, string | number | boolean | undefined | null>): Promise<Record<string, unknown>>;
+    usageBreakdown(query?: Record<string, string | number | boolean | undefined | null>): Promise<Record<string, unknown>>;
+    usageLogs(query?: Record<string, string | number | boolean | undefined | null>): Promise<Record<string, unknown>>;
+  };
+};
+
 export type OpgClient = OpgClientInternals & {
+  platform: OpgPlatformClient;
   sdk: {
     manifest(): Promise<Record<string, unknown>>;
     openapi(): Promise<Record<string, unknown>>;
@@ -102,10 +189,14 @@ export function createOpgClient(options: OpgClientOptions): OpgClient {
   }
 
   const baseUrl = normalizeBaseUrl(options.baseUrl);
-  const app = normalizePathSegment(options.app, 'app');
-  const apiBaseUrl = `${baseUrl}/${app}/v1`;
+  const app = options.app ? normalizePathSegment(options.app, 'app') : '';
+  const apiBaseUrl = app ? `${baseUrl}/${app}/v1` : '';
+  const platform = createOpgPlatformClient({ ...options, baseUrl, fetch: fetchImpl });
 
   const request = async <T = unknown>(path: string, requestOptions: OpgRequestOptions = {}): Promise<T> => {
+    if (!apiBaseUrl) {
+      throw new Error('OPG app is required for app-scoped SDK calls. Use createOpgPlatformClient for global platform operations.');
+    }
     const response = await rawRequest(fetchImpl, apiBaseUrl, path, options.apiKey, requestOptions);
     const contentType = response.headers.get('content-type') || '';
     if (!response.ok) {
@@ -119,6 +210,9 @@ export function createOpgClient(options: OpgClientOptions): OpgClient {
   };
 
   const stream = async function* (path: string, requestOptions: OpgRequestOptions = {}): AsyncIterable<string> {
+    if (!apiBaseUrl) {
+      throw new Error('OPG app is required for app-scoped SDK calls. Use createOpgPlatformClient for global platform operations.');
+    }
     const response = await rawRequest(fetchImpl, apiBaseUrl, path, options.apiKey, requestOptions);
     if (!response.ok) {
       const text = await response.text().catch(() => '');
@@ -145,6 +239,7 @@ export function createOpgClient(options: OpgClientOptions): OpgClient {
   };
 
   return {
+    platform,
     request,
     stream,
     sdk: {
@@ -189,6 +284,140 @@ export function createOpgClient(options: OpgClientOptions): OpgClient {
       describe: (table) => request(`/sdk/database/tables/${encodeURIComponent(table)}`),
       query: (input) => request('/sdk/database/query', { method: 'POST', body: input }),
       execute: (input) => request('/sdk/database/execute', { method: 'POST', body: input }),
+    },
+  };
+}
+
+export function createOpgPlatformClient(options: OpgClientOptions): OpgPlatformClient {
+  const fetchImpl = options.fetch || globalThis.fetch;
+  if (!fetchImpl) {
+    throw new Error('OPG SDK requires fetch. Use Node.js 22+ or pass a fetch implementation.');
+  }
+
+  const baseUrl = normalizeBaseUrl(options.baseUrl);
+  const platformBaseUrl = `${baseUrl}/api/v1/platform-admin`;
+  const token = options.platformToken || options.apiKey;
+
+  const request = async <T = unknown>(path: string, requestOptions: OpgRequestOptions = {}): Promise<T> => {
+    const response = await rawRequest(fetchImpl, platformBaseUrl, path, token, requestOptions);
+    const contentType = response.headers.get('content-type') || '';
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new OpgApiError(response.status, resolveErrorMessage(text, response.statusText), text);
+    }
+    if (contentType.includes('application/json')) {
+      return (await response.json()) as T;
+    }
+    return (await response.arrayBuffer()) as T;
+  };
+
+  const crud = (path: string, options: { updateMethod?: 'PATCH' | 'PUT'; testPath?: string } = {}): OpgCrudClient => ({
+    list: (query) => request(path, { query }),
+    create: (input) => request(path, { method: 'POST', body: input }),
+    update: (id, input) => request(`${path}/${encodeURIComponent(id)}`, { method: options.updateMethod || 'PUT', body: input }),
+    delete: (id) => request(`${path}/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    test: (idOrInput, input) => {
+      if (typeof idOrInput === 'string') {
+        return request(`${path}/${encodeURIComponent(idOrInput)}${options.testPath || '/test'}`, { method: 'POST', body: input || {} });
+      }
+      return request(`${path}${options.testPath || '/test'}`, { method: 'POST', body: idOrInput || {} });
+    },
+  });
+
+  const appsBase = '/apps';
+  const aiModels = crud('/ai/models');
+  const aiSources = crud('/ai/sources');
+
+  return {
+    request,
+    apps: {
+      list: (query) => request(appsBase, {
+        query: {
+          include_inactive: query?.include_inactive ?? query?.includeInactive,
+        },
+      }),
+      get: (appId) => request(`${appsBase}/${encodeURIComponent(appId)}`),
+      create: (input) => request(appsBase, { method: 'POST', body: input }),
+      update: (appId, input) => request(`${appsBase}/${encodeURIComponent(appId)}`, { method: 'PUT', body: input }),
+      stats: (appId) => request(`${appsBase}/${encodeURIComponent(appId)}/stats`),
+      ai: {
+        modelRoutes: (appId) => request(`${appsBase}/${encodeURIComponent(appId)}/ai/model-routes`),
+        upsertModelRoute: (appId, modelId, input) =>
+          request(`${appsBase}/${encodeURIComponent(appId)}/ai/model-routes/${encodeURIComponent(modelId)}`, { method: 'PUT', body: input }),
+        deleteModelRoute: (appId, modelId) =>
+          request(`${appsBase}/${encodeURIComponent(appId)}/ai/model-routes/${encodeURIComponent(modelId)}`, { method: 'DELETE' }),
+        setModelVisibility: (appId, modelId, input) =>
+          request(`${appsBase}/${encodeURIComponent(appId)}/ai/model-visibility/${encodeURIComponent(modelId)}`, { method: 'PUT', body: input }),
+        defaultModels: (appId) => request(`${appsBase}/${encodeURIComponent(appId)}/ai/default-models`),
+        setDefaultModel: (appId, capability, input) =>
+          request(`${appsBase}/${encodeURIComponent(appId)}/ai/default-models/${encodeURIComponent(capability)}`, { method: 'PUT', body: input }),
+        deleteDefaultModel: (appId, capability) =>
+          request(`${appsBase}/${encodeURIComponent(appId)}/ai/default-models/${encodeURIComponent(capability)}`, { method: 'DELETE' }),
+      },
+    },
+    runtimeSettings: {
+      get: () => request('/runtime-settings'),
+      update: (input) => request('/runtime-settings', { method: 'PATCH', body: input }),
+    },
+    storageProviders: crud('/storage/providers', { updateMethod: 'PATCH' }),
+    smtpProviders: crud('/smtp/providers', { updateMethod: 'PATCH' }),
+    integrationApiKeys: {
+      list: () => request('/integration-api-keys'),
+      create: (input) => request('/integration-api-keys', { method: 'POST', body: input }),
+      revoke: (id) => request(`/integration-api-keys/${encodeURIComponent(id)}/revoke`, { method: 'POST', body: {} }),
+    },
+    payments: {
+      methods: crud('/payments/methods'),
+    },
+    sms: {
+      providerCatalog: () => request('/sms/provider-catalog'),
+      providers: crud('/sms/providers'),
+      signatures: crud('/sms/signatures'),
+      templates: crud('/sms/templates'),
+    },
+    oauth: {
+      wechatOpenApps: crud('/wechat/open-apps'),
+      googleClients: crud('/google/oauth-clients'),
+      githubApps: crud('/github/oauth-apps'),
+      appleCredentials: crud('/apple/login-credentials'),
+    },
+    email: {
+      cloudflareAccounts: {
+        ...crud('/email/cloudflare/accounts', { updateMethod: 'PATCH' }),
+        verifyToken: (input) => request('/email/cloudflare/accounts/verify-token', { method: 'POST', body: input }),
+        sendingDomains: (accountId) => request(`/email/cloudflare/accounts/${encodeURIComponent(accountId)}/sending-domains`),
+      },
+      senders: crud('/email/senders', { updateMethod: 'PATCH' }),
+    },
+    proxies: {
+      ...crud('/proxies'),
+      batchTest: (input) => request('/proxies/batch-test', { method: 'POST', body: input }),
+      import: (input) => request('/proxies/import', { method: 'POST', body: input }),
+      export: () => request('/proxies/export'),
+      checkLogs: (proxyId, query) => request(`/proxies/${encodeURIComponent(proxyId)}/check-logs`, { query }),
+    },
+    ai: {
+      sources: {
+        ...aiSources,
+        test: (input) => request('/ai/sources/test', { method: 'POST', body: typeof input === 'string' ? {} : input }),
+      },
+      providerTemplates: () => request('/ai/provider-templates'),
+      gatewayRuntime: () => request('/ai/gateway/runtime'),
+      providerHealth: (query) => request('/ai/gateway/provider-health', { query }),
+      requestEvents: (query) => request('/ai/gateway/request-events', { query }),
+      auditEvents: (query) => request('/ai/audit-events', { query }),
+      models: {
+        ...aiModels,
+        test: (input) => request('/ai/models/test', { method: 'POST', body: typeof input === 'string' ? {} : input }),
+        testBatch: (input) => request('/ai/models/test-batch', { method: 'POST', body: input }),
+        sourceRoutes: (modelId) => request(`/ai/models/${encodeURIComponent(modelId)}/sources`),
+        replaceSourceRoutes: (modelId, input) => request(`/ai/models/${encodeURIComponent(modelId)}/sources`, { method: 'PUT', body: input }),
+        playground: (input) => request('/ai/models/playground', { method: 'POST', body: input }),
+        queryPlaygroundTask: (input) => request('/ai/models/playground/query', { method: 'POST', body: input }),
+      },
+      usageSummary: (query) => request('/ai/usage/summary', { query }),
+      usageBreakdown: (query) => request('/ai/usage/breakdown', { query }),
+      usageLogs: (query) => request('/ai/usage/logs', { query }),
     },
   };
 }
