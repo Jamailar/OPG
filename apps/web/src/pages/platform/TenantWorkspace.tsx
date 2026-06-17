@@ -3716,19 +3716,19 @@ const agents = await opg.agents.list();`}</pre>
         </div>
       </section>
 
-      <section className="card">
-        <div className="platform-section-head"><h3>视频下载加速</h3></div>
-        <div className="platform-form-grid">
-          <label className="form-group">
-            <span>启用</span>
+      <section className="card video-proxy-settings-card">
+        <div className="platform-section-head video-proxy-settings-head"><h3>视频下载加速</h3></div>
+        <div className="video-proxy-settings-row">
+          <label className="video-proxy-toggle">
             <input
               type="checkbox"
               checked={videoProxyEnabled}
               onChange={(event) => setVideoProxyEnabled(event.target.checked)}
             />
+            <span>启用</span>
           </label>
-          <div className="form-group">
-            <label>保存天数</label>
+          <label className="video-proxy-field">
+            <span>保存天数</span>
             <input
               type="number"
               min={1}
@@ -3736,9 +3736,9 @@ const agents = await opg.agents.list();`}</pre>
               value={videoProxyRetentionDaysInput}
               onChange={(event) => setVideoProxyRetentionDaysInput(event.target.value)}
             />
-          </div>
-          <div className="form-group">
-            <label>最大文件 MB</label>
+          </label>
+          <label className="video-proxy-field">
+            <span>最大文件 MB</span>
             <input
               type="number"
               min={1}
@@ -3746,12 +3746,10 @@ const agents = await opg.agents.list();`}</pre>
               value={videoProxyMaxFileMbInput}
               onChange={(event) => setVideoProxyMaxFileMbInput(event.target.value)}
             />
-          </div>
-          <div className="platform-form-actions platform-form-span-2">
-            <button className="btn btn-primary btn-sm" type="button" onClick={saveVideoProxySettings} disabled={videoProxySaving}>
-              {videoProxySaving ? '保存中...' : '保存'}
-            </button>
-          </div>
+          </label>
+          <button className="btn btn-primary btn-sm" type="button" onClick={saveVideoProxySettings} disabled={videoProxySaving}>
+            {videoProxySaving ? '保存中...' : '保存'}
+          </button>
         </div>
       </section>
 

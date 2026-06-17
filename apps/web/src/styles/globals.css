@@ -1134,6 +1134,61 @@ code {
   gap: 10px 12px;
 }
 
+.video-proxy-settings-card {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 16px 18px;
+}
+
+.video-proxy-settings-head {
+  flex: 0 0 auto;
+  margin-bottom: 0;
+}
+
+.video-proxy-settings-row {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.video-proxy-toggle,
+.video-proxy-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.video-proxy-toggle input {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  margin: 0;
+}
+
+.video-proxy-field input {
+  width: 120px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: #FFFFFF;
+  color: var(--color-text-primary);
+  font: inherit;
+}
+
+.video-proxy-settings-row .btn {
+  margin-left: auto;
+  min-height: 34px;
+}
+
 .platform-form-actions {
   display: flex;
   gap: 10px;
@@ -6056,6 +6111,26 @@ table.table-sticky th {
 
   .platform-form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .video-proxy-settings-card,
+  .video-proxy-settings-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .video-proxy-settings-row .btn,
+  .video-proxy-field input {
+    width: 100%;
+  }
+
+  .video-proxy-settings-row .btn {
+    margin-left: 0;
+  }
+
+  .video-proxy-field {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .platform-form-span-2 {
