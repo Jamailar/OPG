@@ -11991,7 +11991,9 @@ table tbody tr:nth-child(even):hover td {
   position: sticky;
   top: 0;
   height: 76px;
-  padding: 0 34px 0 36px;
+  padding:
+    0
+    max(36px, calc((100vw - 216px - 1440px - 72px) / 2 + 36px));
   border-bottom: 0;
   background: rgba(251, 250, 255, 0.72);
   box-shadow: none;
@@ -12081,11 +12083,13 @@ table tbody tr:nth-child(even):hover td {
 
 .platform-shell:not(.tenant-workspace-mode) .platform-content {
   position: relative;
-  padding: 18px 34px 34px 36px;
+  padding: 18px 36px 34px;
 }
 
 .platform-shell:not(.tenant-workspace-mode) .platform-page {
-  max-width: 1220px;
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
   display: grid;
   gap: 22px;
 }
