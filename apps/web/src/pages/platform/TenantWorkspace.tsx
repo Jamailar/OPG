@@ -141,7 +141,6 @@ const WORKSPACE_NAV: Array<{ key: WorkspaceSection; label: string; desc: string 
   { key: 'developers', label: '开发者接入', desc: 'SDK、Codex 与 API Key' },
   { key: 'admins', label: '管理员管理', desc: '账号、密码、权限' },
   { key: 'ai-routing', label: 'AI 模型路由', desc: '基于全局源做租户级覆盖' },
-  { key: 'site', label: '官网配置', desc: '下载、表单、站点消息' },
   { key: 'email', label: '邮件', desc: '发件、联系人与批次' },
   { key: 'feedback', label: '用户反馈', desc: '反馈处理、积分奖励' },
   { key: 'acquisition', label: '用户来源', desc: '来源选项与提交记录' },
@@ -743,7 +742,6 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
       if (item.key === 'developers') return hasAppPermission('app_api_docs_read');
       if (item.key === 'admins') return isAppSuperAdmin;
       if (item.key === 'ai-routing') return canManagePlatformAppSettings;
-      if (item.key === 'site') return hasAppPermission('app_site_manage');
       if (item.key === 'email') return hasAppPermission('app_email_manage');
       if (item.key === 'feedback') return hasAppPermission('app_feedback_manage');
       if (item.key === 'acquisition') return hasAppPermission('app_acquisition_manage');
@@ -1198,10 +1196,8 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
         platformApi.getAppStats(appId),
       ]);
       const access = pickApiData<PlatformMyAppAdminPermissions>(accessResp) || accessResp;
-      const accessPermissions = access?.page_permissions || [];
       const accessIsSuper = Boolean(access?.is_super_admin);
       const canUseGlobalPlatformSettings = runtimeContext.isPlatformPortal && accessIsSuper;
-      const accessHasPermission = (key: string) => accessIsSuper || accessPermissions.includes(key);
       setAdminAccess(access);
       setPermissionCatalog(access?.permission_catalog || []);
 
@@ -1226,14 +1222,6 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
       setSmsSignatureRefIdInput(String(detail?.settings?.sms_signature_ref_id || '').trim());
       setSmsTemplateRefIdInput(String(detail?.settings?.sms_template_ref_id || '').trim());
       setStats(pickApiData<PlatformTenantStats>(statsResp));
-
-      if (accessHasPermission('app_site_manage')) {
-        const siteSettingsResp = await platformApi.getAppSiteSettings(appId);
-        const sitePayload = pickApiData<{ settings: PlatformTenantSiteSettings }>(siteSettingsResp) || siteSettingsResp;
-        setSiteSettings(sitePayload?.settings || {});
-      } else {
-        setSiteSettings({});
-      }
 
       let adminItems: PlatformTenantAdminItem[] = [];
       if (accessIsSuper) {
