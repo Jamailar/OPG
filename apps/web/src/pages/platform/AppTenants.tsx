@@ -20,9 +20,6 @@ interface AppFormState {
   platform_admin_domain: string;
   api_domain: string;
   user_web_domain: string;
-  email_primary_color: string;
-  email_secondary_color: string;
-  email_greeting: string;
   email_code_label: string;
   email_expire_text: string;
   email_footer_text: string;
@@ -38,45 +35,10 @@ const EMPTY_FORM: AppFormState = {
   platform_admin_domain: '',
   api_domain: '',
   user_web_domain: '',
-  email_primary_color: '#0077F0',
-  email_secondary_color: '#00C4C8',
-  email_greeting: '',
   email_code_label: '',
   email_expire_text: '',
   email_footer_text: '',
 };
-
-function ColorSettingField(props: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div className="form-group">
-      <label>{props.label}</label>
-      <label className="platform-color-field" aria-label={`选择${props.label}`}>
-        <span
-          className="platform-color-field__swatch"
-          title={props.label}
-        >
-          <span
-            className="platform-color-field__preview"
-            style={{ backgroundColor: props.value || '#000000' }}
-            aria-hidden="true"
-          />
-          <span className="platform-color-field__value">{props.value || '未设置'}</span>
-        </span>
-        <input
-          className="platform-color-field__native"
-          type="color"
-          value={props.value || '#000000'}
-          onChange={(event) => props.onChange(event.target.value)}
-          aria-label={props.label}
-        />
-      </label>
-    </div>
-  );
-}
 
 function normalizeDomain(domain: string): string {
   return domain.trim().toLowerCase();
@@ -142,9 +104,6 @@ export default function AppTenants() {
       platform_admin_domain: pickDomain(app.domains, 'PLATFORM_ADMIN'),
       api_domain: pickDomain(app.domains, 'API'),
       user_web_domain: pickDomain(app.domains, 'USER_WEB'),
-      email_primary_color: app.settings?.email_primary_color || '#0077F0',
-      email_secondary_color: app.settings?.email_secondary_color || '#00C4C8',
-      email_greeting: app.settings?.email_greeting || '',
       email_code_label: app.settings?.email_code_label || '',
       email_expire_text: app.settings?.email_expire_text || '',
       email_footer_text: app.settings?.email_footer_text || '',
@@ -180,9 +139,6 @@ export default function AppTenants() {
     return {
       brand_name: form.brand_name.trim() || undefined,
       app_url: form.app_url.trim() || undefined,
-      email_primary_color: form.email_primary_color || undefined,
-      email_secondary_color: form.email_secondary_color || undefined,
-      email_greeting: form.email_greeting.trim() || undefined,
       email_code_label: form.email_code_label.trim() || undefined,
       email_expire_text: form.email_expire_text.trim() || undefined,
       email_footer_text: form.email_footer_text.trim() || undefined,
@@ -376,24 +332,6 @@ export default function AppTenants() {
                 value={form.app_url}
                 onChange={(event) => setForm((prev) => ({ ...prev, app_url: event.target.value }))}
                 placeholder="https://app.example.com"
-              />
-            </div>
-            <ColorSettingField
-              label="主色"
-              value={form.email_primary_color}
-              onChange={(value) => setForm((prev) => ({ ...prev, email_primary_color: value }))}
-            />
-            <ColorSettingField
-              label="辅色"
-              value={form.email_secondary_color}
-              onChange={(value) => setForm((prev) => ({ ...prev, email_secondary_color: value }))}
-            />
-            <div className="form-group platform-form-span-2">
-              <label>邮件问候语</label>
-              <input
-                value={form.email_greeting}
-                onChange={(event) => setForm((prev) => ({ ...prev, email_greeting: event.target.value }))}
-                placeholder="例如：您好，"
               />
             </div>
             <div className="form-group platform-form-span-2">

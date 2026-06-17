@@ -2730,24 +2730,6 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
           <div className="platform-detail">
             <div className="platform-detail-row"><span>品牌名称</span><strong>{appDetail?.settings?.brand_name || '-'}</strong></div>
             <div className="platform-detail-row"><span>应用地址</span><strong>{appDetail?.settings?.app_url || '-'}</strong></div>
-            <div className="platform-detail-row">
-              <span>主色</span>
-              <strong className="platform-color-inline">
-                {appDetail?.settings?.email_primary_color ? (
-                  <span className="platform-color-inline__swatch" style={{ backgroundColor: appDetail.settings.email_primary_color }} aria-hidden="true" />
-                ) : null}
-                <span>{appDetail?.settings?.email_primary_color || '-'}</span>
-              </strong>
-            </div>
-            <div className="platform-detail-row">
-              <span>辅色</span>
-              <strong className="platform-color-inline">
-                {appDetail?.settings?.email_secondary_color ? (
-                  <span className="platform-color-inline__swatch" style={{ backgroundColor: appDetail.settings.email_secondary_color }} aria-hidden="true" />
-                ) : null}
-                <span>{appDetail?.settings?.email_secondary_color || '-'}</span>
-              </strong>
-            </div>
           </div>
         </section>
       </div>
