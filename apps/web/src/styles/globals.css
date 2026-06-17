@@ -12448,10 +12448,12 @@ table tbody tr:nth-child(even):hover td {
 }
 
 .ac-login-page.ac-setup-screen .ac-login-form {
-  gap: 16px;
+  gap: 18px;
 }
 
 .ac-login-page.ac-setup-screen .form-group {
+  display: grid;
+  gap: 8px;
   margin-bottom: 0;
 }
 
@@ -12500,7 +12502,7 @@ table tbody tr:nth-child(even):hover td {
 .ac-login-page.ac-setup-screen .ac-login-card {
   width: 100%;
   min-height: 0;
-  padding: 46px 44px 42px;
+  padding: 42px 44px 42px;
   border: 1px solid rgba(124, 58, 237, 0.14);
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.9);
@@ -12510,11 +12512,11 @@ table tbody tr:nth-child(even):hover td {
 }
 
 .ac-login-page.ac-setup-screen .ac-login-card-brand {
-  margin-bottom: 28px;
+  margin-bottom: 24px;
 }
 
 .ac-login-page.ac-setup-screen .ac-login-header {
-  margin-bottom: 28px;
+  margin-bottom: 16px;
 }
 
 .ac-login-page.ac-setup-screen .ac-login-footer {
