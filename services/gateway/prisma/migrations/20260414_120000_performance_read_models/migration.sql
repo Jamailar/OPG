@@ -2,13 +2,32 @@ BEGIN;
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'AppStatus') THEN
+    CREATE TYPE "AppStatus" AS ENUM ('ACTIVE', 'INACTIVE');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'AppDomainType') THEN
+    CREATE TYPE "AppDomainType" AS ENUM ('BUSINESS_ADMIN', 'PLATFORM_ADMIN', 'API', 'USER_WEB');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'UserRole') THEN
+    CREATE TYPE "UserRole" AS ENUM ('USER', 'ADMIN', 'COACH');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'AdminType') THEN
+    CREATE TYPE "AdminType" AS ENUM ('SUPER_ADMIN', 'ADMIN');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'MembershipType') THEN
+    CREATE TYPE "MembershipType" AS ENUM ('FREE', 'PREMIUM');
+  END IF;
+END $$;
+
 -- Core tenant and user tables. This migration is the bootstrap migration for
 -- self-hosted OPG installs, so it must not assume seed tables already exist.
 CREATE TABLE IF NOT EXISTS apps (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   slug varchar(64) NOT NULL UNIQUE,
   name varchar(128) NOT NULL,
-  status varchar(32) NOT NULL DEFAULT 'ACTIVE',
+  status "AppStatus" NOT NULL DEFAULT 'ACTIVE',
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -17,7 +36,7 @@ CREATE TABLE IF NOT EXISTS app_domains (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   app_id uuid NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
   domain varchar(255) NOT NULL UNIQUE,
-  domain_type varchar(32) NOT NULL,
+  domain_type "AppDomainType" NOT NULL,
   is_primary boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
@@ -53,8 +72,8 @@ CREATE TABLE IF NOT EXISTS users (
   full_name varchar(255) NULL,
   display_name varchar(255) NULL,
   avatar_url text NULL,
-  role varchar(32) NOT NULL DEFAULT 'USER',
-  admin_type varchar(32) NULL,
+  role "UserRole" NOT NULL DEFAULT 'USER',
+  admin_type "AdminType" NULL,
   is_active boolean NOT NULL DEFAULT true,
   is_superuser boolean NOT NULL DEFAULT false,
   session_token text NULL,
@@ -67,7 +86,7 @@ CREATE TABLE IF NOT EXISTS users (
   wechat_unionid varchar(255) NULL,
   phone varchar(64) NULL,
   phone_verified boolean NOT NULL DEFAULT false,
-  membership_type varchar(32) NOT NULL DEFAULT 'FREE',
+  membership_type "MembershipType" NOT NULL DEFAULT 'FREE',
   membership_expires_at timestamptz NULL,
   account_type varchar(32) NOT NULL DEFAULT 'REGISTERED',
   primary_auth_provider varchar(64) NULL,
