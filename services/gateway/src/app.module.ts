@@ -19,6 +19,7 @@ import { AcquisitionModule } from './modules/acquisition/acquisition.module';
 import { RuntimeSettingsModule } from './modules/runtime-settings/runtime-settings.module';
 import { DeveloperSdkModule } from './modules/developer-sdk/developer-sdk.module';
 import { ObservabilityModule } from './modules/observability/observability.module';
+import { BootstrapModule } from './modules/bootstrap/bootstrap.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
@@ -45,6 +46,7 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
     AcquisitionModule,
     RuntimeSettingsModule,
     DeveloperSdkModule,
+    BootstrapModule,
   ],
   providers: [
     {

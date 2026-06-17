@@ -327,6 +327,25 @@ export interface AppApiKeyCreateResult {
   message?: string;
 }
 
+export interface BootstrapStatus {
+  needs_setup: boolean;
+  platform_app_slug: string;
+  platform_app_exists: boolean;
+  platform_super_admin_exists: boolean;
+}
+
+export const bootstrapApi = {
+  getStatus: async (): Promise<BootstrapStatus> => {
+    const response = await apiClient.getClient().get('/bootstrap/status');
+    return response.data;
+  },
+
+  createPlatformAdmin: async (data: { email: string; password: string; display_name?: string }) => {
+    const response = await apiClient.getClient().post('/bootstrap/platform-admin', data);
+    return response.data;
+  },
+};
+
 // API 方法
 export const authApi = {
   // 注册

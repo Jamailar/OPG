@@ -209,6 +209,7 @@ const RESERVED_APP_SLUG_PATHS = new Set([
   'env.js',
   'favicon.ico',
   'platform-admin',
+  'setup',
 ]);
 
 function resolvePathAppSlug(): string {
