@@ -4,9 +4,19 @@ import { AppBrandMark } from '@/components/AppBrand';
 import { authService } from '@/lib/auth-service';
 import { runtimeContext } from '@/lib/runtime-context';
 
+const heroFeatures = [
+  { className: 'project', icon: 'M4 7.2A2.2 2.2 0 0 1 6.2 5h3.16l1.6 1.6h6.84A2.2 2.2 0 0 1 20 8.8v8A2.2 2.2 0 0 1 17.8 19H6.2A2.2 2.2 0 0 1 4 16.8Z', label: '项目管理' },
+  { className: 'data', icon: 'M6 17v-5m6 5V7m6 10v-8', label: '数据分析' },
+  { className: 'business', icon: 'M12 4 4 8l8 4 8-4-8-4Zm-8 8 8 4 8-4M4 16l8 4 8-4', label: '多业务单元' },
+  { className: 'flow', icon: 'M13 3 5 14h6l-1 7 9-12h-6l0-6Z', label: '自动化流程' },
+  { className: 'team', icon: 'M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm8 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM4 19a4 4 0 0 1 8 0m0 0a4 4 0 0 1 8 0', label: '团队协作' },
+];
+
 export default function Login() {
   const navigate = useNavigate();
   const isPlatformPortal = runtimeContext.isPlatformPortal;
+  const title = isPlatformPortal ? '欢迎回来' : '应用后台登录';
+  const subtitle = isPlatformPortal ? '登录你的 opg 账户，继续高效管理' : '使用管理员账号进入应用后台';
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -51,40 +61,72 @@ export default function Login() {
   };
 
   return (
-    <div className="ac-login-page">
+    <div className="ac-login-page ac-login-screen">
       <div className="ac-login-backdrop" aria-hidden="true" />
+      <div className="ac-login-language" aria-label="当前语言">
+        <span className="ac-login-language-icon" aria-hidden="true">◎</span>
+        简体中文
+        <span aria-hidden="true">⌄</span>
+      </div>
       <div className="ac-login-shell">
         <section className="ac-login-intro">
-          <div className="ac-login-intro-main">
-            <div className="ac-login-intro-mark">
-              <AppBrandMark size={112} />
-            </div>
-            <div className="ac-brand-pill">OPG</div>
-            <h1>{isPlatformPortal ? '欢迎进入平台管理台' : '管理员登录'}</h1>
-            <p>{isPlatformPortal ? '统一查看租户应用、AI 服务、支付方式与短信配置。该入口仅面向超级管理员。' : '使用管理员账号进入应用后台。'}</p>
-            {isPlatformPortal && (
-              <ul>
-                <li>租户接入与状态查看</li>
-                <li>管理员账号与权限控制</li>
-                <li>平台服务配置与运行检查</li>
-              </ul>
-            )}
+          <div className="ac-login-brand-row">
+            <AppBrandMark size={44} />
+            <strong>opg</strong>
+            <span />
+            <small>one person group</small>
           </div>
 
-          <div className="ac-login-intro-footer">
-            <strong>OPG</strong>
-            <span>{isPlatformPortal ? '超级管理员入口' : runtimeContext.appSlug}</span>
+          <div className="ac-login-intro-main">
+            <h1>
+              <span>一个人管理</span>
+              <strong>一个集团</strong>
+            </h1>
+            <p>opg 帮助独立开发者和小团队，轻松管理多个项目、团队和业务单元。</p>
+          </div>
+
+          <div className="ac-login-hero">
+            <div className="ac-login-orbit orbit-one" aria-hidden="true" />
+            <div className="ac-login-orbit orbit-two" aria-hidden="true" />
+            <div className="ac-login-orbit orbit-three" aria-hidden="true" />
+            <div className="ac-login-hero-mark">
+              <AppBrandMark size={224} />
+            </div>
+            {heroFeatures.map((item) => (
+              <div key={item.className} className={`ac-feature-chip ${item.className}`}>
+                <span className="ac-feature-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d={item.icon} stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" />
+                  </svg>
+                </span>
+                {item.label}
+              </div>
+            ))}
+            <span className="ac-orbit-dot dot-one" aria-hidden="true" />
+            <span className="ac-orbit-dot dot-two" aria-hidden="true" />
+            <span className="ac-orbit-dot dot-three" aria-hidden="true" />
+            <span className="ac-orbit-dot dot-four" aria-hidden="true" />
+          </div>
+
+          <div className="ac-login-proof">
+            <div className="ac-proof-avatars" aria-hidden="true">
+              <span>J</span>
+              <span>A</span>
+              <span>M</span>
+            </div>
+            <p>“自从使用 opg，我一个人就能管理 5 个项目，效率提升了 300%。”<br />— 独立开发者 · Alex</p>
           </div>
         </section>
 
         <section className="ac-login-card">
+          <div className="ac-login-card-brand">
+            <AppBrandMark size={52} />
+            <strong>opg</strong>
+          </div>
           <div className="ac-login-header">
-            <div className="ac-login-logo">
-              <AppBrandMark size={60} />
-            </div>
             <div>
-              <h2>{isPlatformPortal ? '管理员登录' : '应用后台登录'}</h2>
-              <p>使用管理员账号进入控制台</p>
+              <h2>{title}</h2>
+              <p>{subtitle}</p>
             </div>
           </div>
 
@@ -102,35 +144,55 @@ export default function Login() {
 
           <form className="ac-login-form" onSubmit={handleSubmit}>
             <div className="form-group">
-              <label>管理员邮箱 *</label>
-              <input
-                type="email"
-                autoComplete="username email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                required
-                placeholder="admin@example.com"
-              />
+              <label>邮箱地址</label>
+              <div className="ac-input-wrap">
+                <span aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M4 7.5 12 13l8-5.5M6.2 19h11.6A2.2 2.2 0 0 0 20 16.8V7.2A2.2 2.2 0 0 0 17.8 5H6.2A2.2 2.2 0 0 0 4 7.2v9.6A2.2 2.2 0 0 0 6.2 19Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+                  </svg>
+                </span>
+                <input
+                  type="email"
+                  autoComplete="username email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  required
+                  placeholder="请输入邮箱地址"
+                />
+              </div>
             </div>
 
             <div className="form-group">
-              <label>密码 *</label>
-              <input
-                type="password"
-                autoComplete="current-password"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                required
-                placeholder="请输入密码"
-              />
+              <label>密码</label>
+              <div className="ac-input-wrap">
+                <span aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M7 10V8a5 5 0 0 1 10 0v2M6.8 10h10.4A1.8 1.8 0 0 1 19 11.8v6.4a1.8 1.8 0 0 1-1.8 1.8H6.8A1.8 1.8 0 0 1 5 18.2v-6.4A1.8 1.8 0 0 1 6.8 10Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+                  </svg>
+                </span>
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  required
+                  placeholder="请输入密码"
+                />
+              </div>
             </div>
 
             <button type="submit" className="btn ac-login-btn" disabled={loading}>
-              {loading ? '登录中...' : isPlatformPortal ? '进入平台' : '进入后台'}
+              {loading ? '登录中...' : '登录'}
             </button>
           </form>
         </section>
       </div>
+      <footer className="ac-login-footer">
+        <span>© 2024 opg (one person group)，保留所有权利。</span>
+        <a>隐私政策</a>
+        <a>服务条款</a>
+        <a>联系我们</a>
+      </footer>
     </div>
   );
 }

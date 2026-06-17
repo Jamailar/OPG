@@ -132,7 +132,7 @@ export default function PlatformLayout({ children }: PlatformLayoutProps) {
             </div>
             <div className="platform-brand-text">
               <h2>OPG</h2>
-              <p>{`v${__APP_VERSION__}`}</p>
+              <p>one person group</p>
             </div>
           </div>
 
