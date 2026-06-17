@@ -21,7 +21,14 @@ if [ "${OPG_RUN_MIGRATIONS:-true}" = "false" ] || [ "${OPG_RUN_MIGRATIONS:-true}
   echo "Skipping database migrations because OPG_RUN_MIGRATIONS=${OPG_RUN_MIGRATIONS}."
 else
   echo "Applying pending database migrations..."
-  "$PRISMA_CLI" migrate deploy --schema "$SCHEMA_PATH"
+  if "$PRISMA_CLI" migrate deploy --schema "$SCHEMA_PATH"; then
+    echo "Prisma migrations applied."
+  elif [ "${OPG_REQUIRE_PRISMA_MIGRATIONS:-false}" = "true" ] || [ "${OPG_REQUIRE_PRISMA_MIGRATIONS:-false}" = "1" ]; then
+    echo "Prisma migration failed and OPG_REQUIRE_PRISMA_MIGRATIONS=${OPG_REQUIRE_PRISMA_MIGRATIONS}." >&2
+    exit 1
+  else
+    echo "Prisma migration failed; continuing so application startup migrations and readiness checks can report schema state." >&2
+  fi
 fi
 
 echo "Starting opg-gateway..."

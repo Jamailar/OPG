@@ -135,14 +135,23 @@ docker run --rm -p 8080:3000 \
 | `PORT` | 建议 | Gateway 监听端口，默认 `3000` |
 | `CORS_ORIGINS` | 冷启动可选 | 首次进入后台前的 CORS fallback |
 | `OPG_RUN_MIGRATIONS` | 可选 | 设置为 `false` 或 `0` 时跳过启动迁移 |
+| `OPG_REQUIRE_PRISMA_MIGRATIONS` | 可选 | 设置为 `true` 或 `1` 时，`prisma migrate deploy` 失败会阻止容器启动 |
 
 ## 数据库迁移
 
-默认启动时会执行：
+默认启动时会先尝试执行：
 
 ```bash
 prisma migrate status
 prisma migrate deploy
+```
+
+`prisma migrate deploy` 失败时，容器默认继续启动，让应用内 `DatabaseModule` 使用同一批 SQL migrations 做带锁迁移，并由 `/readyz` 暴露最终数据库状态。这样可以避免 Coolify/Dockerfile 部署因为 Prisma CLI 的预启动检查直接退出，导致拿不到应用层日志。
+
+如果生产环境要求 Prisma CLI 迁移失败即阻止启动：
+
+```bash
+OPG_REQUIRE_PRISMA_MIGRATIONS=true
 ```
 
 单实例部署保持默认即可。多副本部署时，建议只让一个 migration job 执行迁移，其它应用副本设置：
