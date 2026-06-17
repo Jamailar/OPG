@@ -131,9 +131,23 @@ CREATE TABLE IF NOT EXISTS vocabulary_chapters (
   book_id uuid NOT NULL REFERENCES vocabulary_books(id) ON DELETE CASCADE,
   title varchar(255) NOT NULL DEFAULT '',
   cover_url varchar(2048) NULL,
+  position integer NOT NULL DEFAULT 0,
   sort_order integer NOT NULL DEFAULT 0,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS vocabulary_book_assignments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  app_id uuid NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  book_id uuid NOT NULL REFERENCES vocabulary_books(id) ON DELETE CASCADE,
+  status varchar(32) NOT NULL DEFAULT 'assigned',
+  assigned_at timestamptz NOT NULL DEFAULT now(),
+  completed_at timestamptz NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (app_id, user_id, book_id)
 );
 
 -- Platform analytics read models and refresh state.
