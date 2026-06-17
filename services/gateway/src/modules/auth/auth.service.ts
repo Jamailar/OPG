@@ -3,13 +3,14 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigType } from '@nestjs/config';
 import { App, AppSetting, PrismaClient, User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
-import { createHash, createHmac, randomBytes, randomUUID } from 'crypto';
+import { createHash, randomBytes, randomUUID } from 'crypto';
 import configuration from '../../config/configuration';
 import { PRISMA_CLIENT } from '../../config/database.module';
 import { AiPointsService } from '../ai-chat/ai-points.service';
 import { OutboundHttpClientService } from '../outbound-proxy/outbound-http-client.service';
 import { RedeemService } from '../redeem/redeem.service';
 import { RuntimeSettingsService } from '../runtime-settings/runtime-settings.service';
+import { SmsService } from '../sms/sms.service';
 import { EmailVerificationService } from './email-verification.service';
 
 type SafeUser = Omit<User, 'hashedPassword'>;
@@ -198,56 +199,6 @@ type UserCreateCompatInput = {
   appleSub?: string | null;
 };
 
-type SmsProviderType = 'GENERIC_API' | 'ALIYUN_SMS';
-
-type SmsProviderRow = {
-  id: string;
-  provider_type: SmsProviderType;
-  name: string;
-  is_active: boolean;
-  is_default: boolean;
-  config_json: unknown;
-};
-
-type SmsSignatureRow = {
-  id: string;
-  provider_id: string;
-  sign_name: string;
-  is_active: boolean;
-  is_default: boolean;
-  meta_json: unknown;
-};
-
-type SmsTemplateRow = {
-  id: string;
-  provider_id: string;
-  template_code: string;
-  template_name: string | null;
-  is_active: boolean;
-  is_default: boolean;
-  meta_json: unknown;
-};
-
-type AppSmsRouteConfig = {
-  sms_provider_ref_id?: string;
-  sms_signature_ref_id?: string;
-  sms_template_ref_id?: string;
-};
-
-type SmsCodeRow = {
-  id: string;
-  code_hash: string;
-  expire_at: Date;
-  attempt_count: number;
-  max_attempts: number;
-};
-
-type SmsRouteConfigResolved = {
-  provider: SmsProviderRow;
-  signature: SmsSignatureRow;
-  template: SmsTemplateRow | null;
-};
-
 type InviteCodeRow = {
   invite_code: string;
 };
@@ -271,16 +222,17 @@ type InviteRedemptionRow = {
   credited_at: Date | null;
 };
 
+type SmsCodeRow = {
+  id: string;
+  code_hash: string;
+  expire_at: Date;
+  attempt_count: number;
+  max_attempts: number;
+};
+
 const INVITE_CODE_LENGTH = 5;
 const INVITE_REWARD_POINTS = 200;
 const INVITE_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-
-const asPlainObject = (value: unknown): Record<string, unknown> => {
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-  return {};
-};
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -289,7 +241,6 @@ export class AuthService implements OnModuleInit {
   private wechatOpenAppSchemaEnsured: Promise<void> | null = null;
   private googleOAuthClientSchemaEnsured: Promise<void> | null = null;
   private githubOAuthAppSchemaEnsured: Promise<void> | null = null;
-  private smsVerificationSchemaEnsured: Promise<void> | null = null;
   private refreshSessionSchemaEnsured: Promise<void> | null = null;
   private readonly wechatLoginSessions = new Map<string, WechatLoginSession>();
   private readonly wechatLoginSessionTtlMs = 2 * 60 * 1000;
@@ -309,10 +260,7 @@ export class AuthService implements OnModuleInit {
   private readonly appWithSettingsByIdCache = new Map<string, { expiresAt: number; value: AppWithSettings }>();
   private readonly inviteCodeCacheTtlMs = 5 * 60 * 1000;
   private readonly inviteCodeCache = new Map<string, { expiresAt: number; value: string }>();
-  private readonly smsRouteCache = new Map<string, { expires_at: number; value: SmsRouteConfigResolved }>();
-  private readonly smsRouteCacheTtlMs = 60 * 1000;
   private oauthSettingsCache: { expiresAt: number; value: Record<string, unknown> } | null = null;
-  private lastSmsCodeCleanupAt = 0;
   private forceRawSqlUserCreate = false;
   private inviteSchemaEnsured: Promise<void> | null = null;
 
@@ -325,6 +273,7 @@ export class AuthService implements OnModuleInit {
     private readonly emailVerificationService: EmailVerificationService,
     private readonly outboundHttpClient: OutboundHttpClientService,
     private readonly runtimeSettingsService: RuntimeSettingsService,
+    private readonly smsService: SmsService,
   ) {}
 
   clearOAuthConfigCache() {
@@ -338,7 +287,6 @@ export class AuthService implements OnModuleInit {
     await Promise.allSettled([
       this.detectUserCreateSchemaMode(),
       this.ensureRefreshSessionSchema(),
-      this.ensureSmsVerificationSchema(),
       this.ensureWechatOpenAppSchema(),
       this.ensureGoogleOAuthClientSchema(),
       this.ensureGitHubOAuthAppSchema(),
@@ -722,78 +670,23 @@ export class AuthService implements OnModuleInit {
   }
 
   async sendSmsCode(phone: string, appSlug?: string) {
-    const app = await this.resolveAppWithSettings(appSlug);
-    return this.sendSmsCodeForResolvedApp(app, phone);
+    return this.smsService.sendSmsCode(appSlug, phone);
   }
 
   async sendSmsCodeForAppId(appId: string, phone: string) {
-    const app = await this.resolveAppByIdWithSettings(appId);
-    return this.sendSmsCodeForResolvedApp(app, phone);
+    return this.smsService.sendSmsCodeForAppId(appId, phone, 'phone_bind');
   }
 
   normalizeSmsPhone(phone: string) {
-    return this.normalizePhone(phone);
+    return this.smsService.normalizeSmsPhone(phone);
   }
 
   normalizeSmsPhoneVariants(phone: string) {
-    return this.buildPhoneIdentityVariants(this.normalizePhone(phone));
+    return this.smsService.normalizeSmsPhoneVariants(phone);
   }
 
   async verifySmsCodeForAppId(appId: string, phone: string, code: string) {
-    const normalizedPhone = this.normalizePhone(phone);
-    const normalizedCode = this.normalizeSmsCode(code);
-    await this.ensureSmsVerificationSchema();
-    await this.verifySmsCode(appId, normalizedPhone, normalizedCode);
-    return {
-      phone: normalizedPhone,
-    };
-  }
-
-  private async sendSmsCodeForResolvedApp(app: AppWithSettings, phone: string) {
-    const normalizedPhone = this.normalizePhone(phone);
-    await this.ensureSmsVerificationSchema();
-    const [smsRoute] = await Promise.all([
-      this.resolveSmsRouteConfig(app),
-      this.assertSmsSendCooldown(app.id, normalizedPhone),
-    ]);
-
-    const code = this.generateVerificationCode();
-    const dispatchMode = this.resolveSmsDispatchMode(smsRoute.provider);
-
-    if (dispatchMode === 'ASYNC') {
-      await this.storeSmsCode({
-        appId: app.id,
-        phone: normalizedPhone,
-        code,
-        providerId: smsRoute.provider.id,
-        signatureId: smsRoute.signature.id,
-      });
-      void this.dispatchSmsCode(smsRoute.provider, smsRoute.signature, smsRoute.template, normalizedPhone, code).catch(async (error) => {
-        this.logger.error(
-          `async sms dispatch failed (app=${app.id}, phone=${normalizedPhone}, provider=${smsRoute.provider.id}): ${
-            error instanceof Error ? error.message : 'unknown'
-          }`,
-        );
-        await this.deleteSmsCode({ appId: app.id, phone: normalizedPhone, code });
-      });
-    } else {
-      await this.dispatchSmsCode(smsRoute.provider, smsRoute.signature, smsRoute.template, normalizedPhone, code);
-      await this.storeSmsCode({
-        appId: app.id,
-        phone: normalizedPhone,
-        code,
-        providerId: smsRoute.provider.id,
-        signatureId: smsRoute.signature.id,
-      });
-    }
-
-    return {
-      message: 'Verification code sent',
-      phone: normalizedPhone,
-      resend_after_seconds: 60,
-      expires_in_seconds: 300,
-      dispatch_mode: dispatchMode,
-    };
+    return this.smsService.verifySmsCodeForAppId(appId, phone, code);
   }
 
   async sendSmsCodeForAppTest(input: {
@@ -804,70 +697,14 @@ export class AuthService implements OnModuleInit {
     persist_code?: boolean;
     respect_cooldown?: boolean;
   }) {
-    const appId = String(input.app_id || '').trim();
-    const appSlug = String(input.app_slug || '').trim();
-    let app: AppWithSettings;
-    if (appId) {
-      app = await this.resolveAppByIdWithSettings(appId);
-    } else {
-      app = await this.resolveAppWithSettings(appSlug || undefined);
-    }
-
-    const normalizedPhone = this.normalizePhone(input.phone);
-    const requestedCode = String(input.code || '').trim();
-    const code = requestedCode ? this.normalizeSmsCode(requestedCode) : this.generateVerificationCode();
-    const persistCode = input.persist_code === true;
-    const respectCooldown = input.respect_cooldown === true;
-
-    await this.ensureSmsVerificationSchema();
-    if (respectCooldown) {
-      await this.assertSmsSendCooldown(app.id, normalizedPhone);
-    }
-
-    const smsRoute = await this.resolveSmsRouteConfig(app);
-    await this.dispatchSmsCode(smsRoute.provider, smsRoute.signature, smsRoute.template, normalizedPhone, code);
-
-    if (persistCode) {
-      await this.storeSmsCode({
-        appId: app.id,
-        phone: normalizedPhone,
-        code,
-        providerId: smsRoute.provider.id,
-        signatureId: smsRoute.signature.id,
-      });
-    }
-
-    return {
-      message: 'Test SMS sent',
-      app_id: app.id,
-      app_slug: app.slug,
-      phone: normalizedPhone,
-      code,
-      code_persisted: persistCode,
-      resend_after_seconds: respectCooldown ? 60 : 0,
-      expires_in_seconds: persistCode ? 300 : 0,
-      route: {
-        provider_id: smsRoute.provider.id,
-        provider_name: smsRoute.provider.name,
-        provider_type: smsRoute.provider.provider_type,
-        signature_id: smsRoute.signature.id,
-        signature_name: smsRoute.signature.sign_name,
-        template_id: smsRoute.template?.id || null,
-        template_code:
-          this.pickSmsTemplateCode(smsRoute.template, asPlainObject(smsRoute.signature.meta_json), asPlainObject(smsRoute.provider.config_json)) ||
-          null,
-        template_name: smsRoute.template?.template_name || null,
-      },
-    };
+    return this.smsService.sendSmsCodeForAppTest(input);
   }
 
   async loginWithSms(phone: string, code: string, appSlug?: string, inviteCode?: string) {
     const app = await this.resolveApp(appSlug);
-    const normalizedPhone = this.normalizePhone(phone);
-    const phoneVariants = this.buildPhoneIdentityVariants(normalizedPhone);
-    const normalizedCode = this.normalizeSmsCode(code);
-    await this.ensureSmsVerificationSchema();
-    await this.verifySmsCode(app.id, normalizedPhone, normalizedCode);
+    const verified = await this.smsService.verifySmsCodeForAppId(app.id, phone, code);
+    const normalizedPhone = verified.phone;
+    const phoneVariants = this.smsService.normalizeSmsPhoneVariants(normalizedPhone);
 
     const phoneUsers = await this.prisma.user.findMany({
       where: {
@@ -2668,35 +2505,6 @@ export class AuthService implements OnModuleInit {
     return `${normalized || `phone${Date.now()}`}@phone.local`;
   }
 
-  private buildPhoneIdentityVariants(phone: string) {
-    const canonical = String(phone || '').trim();
-    const variants = new Set<string>();
-    if (canonical) {
-      variants.add(canonical);
-    }
-
-    const digits = canonical.startsWith('+') ? canonical.slice(1) : canonical;
-    if (digits) {
-      variants.add(digits);
-    }
-    if (canonical.startsWith('+')) {
-      variants.add(digits);
-    } else if (digits) {
-      variants.add(`+${digits}`);
-    }
-
-    if (/^861[3-9]\d{9}$/.test(digits)) {
-      variants.add(digits.slice(2));
-      variants.add(`+${digits}`);
-    }
-    if (/^1[3-9]\d{9}$/.test(digits)) {
-      variants.add(`+86${digits}`);
-      variants.add(`86${digits}`);
-    }
-
-    return Array.from(variants).filter(Boolean);
-  }
-
   private pickPhoneLoginUser(users: User[], normalizedPhone: string): User | null {
     const activeUsers = users.filter((user) => !user.deletedAt && user.isActive);
     return (
@@ -2724,659 +2532,6 @@ export class AuthService implements OnModuleInit {
         });
     }
     await this.refreshSessionSchemaEnsured;
-  }
-
-  private async ensureSmsVerificationSchema() {
-    if (!this.smsVerificationSchemaEnsured) {
-      this.smsVerificationSchemaEnsured = this.prisma
-        .$executeRawUnsafe(
-          `CREATE TABLE IF NOT EXISTS auth_sms_verification_codes (
-             id uuid PRIMARY KEY,
-             app_id uuid NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
-             phone varchar(64) NOT NULL,
-             code_hash varchar(128) NOT NULL,
-             attempt_count integer NOT NULL DEFAULT 0,
-             max_attempts integer NOT NULL DEFAULT 5,
-             provider_id uuid NULL,
-             signature_id uuid NULL,
-             expire_at timestamptz NOT NULL,
-             consumed_at timestamptz NULL,
-             created_at timestamptz NOT NULL DEFAULT now(),
-             updated_at timestamptz NOT NULL DEFAULT now()
-           )`,
-        )
-        .then(async () => {
-          await this.prisma.$executeRawUnsafe(
-            `CREATE INDEX IF NOT EXISTS idx_auth_sms_codes_lookup
-             ON auth_sms_verification_codes(app_id, phone, created_at DESC)`,
-          );
-          await this.prisma.$executeRawUnsafe(
-            `CREATE INDEX IF NOT EXISTS idx_auth_sms_codes_expire
-             ON auth_sms_verification_codes(expire_at DESC)`,
-          );
-        })
-        .catch((error) => {
-          this.smsVerificationSchemaEnsured = null;
-          throw error;
-        });
-    }
-    await this.smsVerificationSchemaEnsured;
-  }
-
-  private async assertSmsSendCooldown(appId: string, phone: string) {
-    const rows = await (this.prisma.$queryRawUnsafe(
-      `SELECT created_at
-       FROM auth_sms_verification_codes
-       WHERE app_id = $1::uuid AND phone = $2
-       ORDER BY created_at DESC
-       LIMIT 1`,
-      appId,
-      phone,
-    ) as Promise<Array<{ created_at: Date }>>);
-    const latest = rows[0];
-    if (!latest) {
-      return;
-    }
-    const elapsedSeconds = Math.floor((Date.now() - new Date(latest.created_at).getTime()) / 1000);
-    if (elapsedSeconds < 60) {
-      throw new BadRequestException(`验证码发送过于频繁，请 ${60 - elapsedSeconds} 秒后重试`);
-    }
-  }
-
-  private async storeSmsCode(input: {
-    appId: string;
-    phone: string;
-    code: string;
-    providerId: string;
-    signatureId: string;
-  }) {
-    const now = Date.now();
-    const expireAt = new Date(now + 5 * 60 * 1000);
-    const codeHash = this.hashSmsCode(input.appId, input.phone, input.code);
-    await this.prisma.$executeRawUnsafe(
-      `DELETE FROM auth_sms_verification_codes
-       WHERE app_id = $1::uuid AND phone = $2 AND consumed_at IS NULL`,
-      input.appId,
-      input.phone,
-    );
-    const nowMs = Date.now();
-    if (nowMs - this.lastSmsCodeCleanupAt > 10 * 60 * 1000) {
-      this.lastSmsCodeCleanupAt = nowMs;
-      void this.prisma
-        .$executeRawUnsafe(
-          `DELETE FROM auth_sms_verification_codes
-           WHERE created_at < now() - interval '7 days'`,
-        )
-        .catch((error) => {
-          this.logger.warn(
-            `auth_sms_verification_codes cleanup failed: ${error instanceof Error ? error.message : 'unknown error'}`,
-          );
-        });
-    }
-    await this.prisma.$executeRawUnsafe(
-      `INSERT INTO auth_sms_verification_codes (
-         id, app_id, phone, code_hash, attempt_count, max_attempts, provider_id, signature_id, expire_at, consumed_at, created_at, updated_at
-       ) VALUES (
-         $1::uuid, $2::uuid, $3, $4, 0, 5, $5::uuid, $6::uuid, $7, null, now(), now()
-       )`,
-      randomUUID(),
-      input.appId,
-      input.phone,
-      codeHash,
-      input.providerId,
-      input.signatureId,
-      expireAt,
-    );
-  }
-
-  private async verifySmsCode(appId: string, phone: string, code: string) {
-    const rows = await (this.prisma.$queryRawUnsafe(
-      `SELECT id, code_hash, expire_at, attempt_count, max_attempts
-       FROM auth_sms_verification_codes
-       WHERE app_id = $1::uuid
-         AND phone = $2
-         AND consumed_at IS NULL
-       ORDER BY created_at DESC
-       LIMIT 1`,
-      appId,
-      phone,
-    ) as Promise<SmsCodeRow[]>);
-    const row = rows[0];
-    if (!row) {
-      throw new UnauthorizedException('验证码错误或已过期');
-    }
-    if (new Date(row.expire_at).getTime() <= Date.now()) {
-      await this.prisma.$executeRawUnsafe(
-        `UPDATE auth_sms_verification_codes
-         SET consumed_at = now(), updated_at = now()
-         WHERE id = $1::uuid`,
-        row.id,
-      );
-      throw new UnauthorizedException('验证码错误或已过期');
-    }
-
-    const codeHash = this.hashSmsCode(appId, phone, code);
-    if (codeHash !== row.code_hash) {
-      const nextAttempts = Number(row.attempt_count || 0) + 1;
-      const maxAttempts = Math.max(1, Number(row.max_attempts || 5));
-      const consumedAt = nextAttempts >= maxAttempts ? new Date() : null;
-      await this.prisma.$executeRawUnsafe(
-        `UPDATE auth_sms_verification_codes
-         SET attempt_count = $2, consumed_at = $3, updated_at = now()
-         WHERE id = $1::uuid`,
-        row.id,
-        nextAttempts,
-        consumedAt,
-      );
-      throw new UnauthorizedException('验证码错误或已过期');
-    }
-
-    await this.prisma.$executeRawUnsafe(
-      `UPDATE auth_sms_verification_codes
-       SET consumed_at = now(), updated_at = now()
-       WHERE id = $1::uuid`,
-      row.id,
-    );
-  }
-
-  private hashSmsCode(appId: string, phone: string, code: string) {
-    const secret = String(this.config.jwt.secret || '');
-    return createHash('sha256').update(`${appId}:${phone}:${code}:${secret}`, 'utf8').digest('hex');
-  }
-
-  private resolveSmsDispatchMode(provider: SmsProviderRow): 'SYNC' | 'ASYNC' {
-    const cfg = asPlainObject(provider.config_json);
-    const modeRaw = String(cfg.dispatch_mode || '').trim().toUpperCase();
-    if (modeRaw === 'ASYNC') {
-      return 'ASYNC';
-    }
-    if (modeRaw === 'SYNC') {
-      return 'SYNC';
-    }
-    if (this.parseBooleanLike(cfg.async_dispatch, false)) {
-      return 'ASYNC';
-    }
-    // Default async for Aliyun to reduce response latency in auth flows.
-    return provider.provider_type === 'ALIYUN_SMS' ? 'ASYNC' : 'SYNC';
-  }
-
-  private async deleteSmsCode(input: { appId: string; phone: string; code: string }) {
-    const codeHash = this.hashSmsCode(input.appId, input.phone, input.code);
-    await this.prisma.$executeRawUnsafe(
-      `DELETE FROM auth_sms_verification_codes
-       WHERE app_id = $1::uuid
-         AND phone = $2
-         AND code_hash = $3
-         AND consumed_at IS NULL`,
-      input.appId,
-      input.phone,
-      codeHash,
-    );
-  }
-
-  private normalizePhone(phone: string) {
-    const normalized = String(phone || '')
-      .trim()
-      .replace(/[\s-]+/g, '');
-    if (!/^\+?\d{6,20}$/.test(normalized)) {
-      throw new BadRequestException('手机号格式不正确');
-    }
-    const hasExplicitCountryCode = normalized.startsWith('+');
-    const digits = hasExplicitCountryCode ? normalized.slice(1) : normalized;
-    if (hasExplicitCountryCode) {
-      return `+${digits}`;
-    }
-    if (/^1[3-9]\d{9}$/.test(digits)) {
-      return `+86${digits}`;
-    }
-    if (/^861[3-9]\d{9}$/.test(digits)) {
-      return `+${digits}`;
-    }
-    return digits;
-  }
-
-  private normalizeSmsCode(code: string) {
-    const normalized = String(code || '').trim();
-    if (!/^\d{4,8}$/.test(normalized)) {
-      throw new BadRequestException('验证码格式不正确');
-    }
-    return normalized;
-  }
-
-  private parseBooleanLike(value: unknown, fallback: boolean) {
-    if (typeof value === 'boolean') return value;
-    const raw = String(value ?? '').trim().toLowerCase();
-    if (!raw) return fallback;
-    if (raw === 'true' || raw === '1' || raw === 'yes' || raw === 'on') return true;
-    if (raw === 'false' || raw === '0' || raw === 'no' || raw === 'off') return false;
-    return fallback;
-  }
-
-  private parseSmsProviderType(value: unknown): SmsProviderType {
-    const normalized = String(value || '')
-      .trim()
-      .toUpperCase();
-    if (normalized !== 'GENERIC_API' && normalized !== 'ALIYUN_SMS') {
-      throw new BadRequestException(`unsupported sms provider type: ${normalized || 'UNKNOWN'}`);
-    }
-    return normalized as SmsProviderType;
-  }
-
-  private extractAppSmsRouteConfig(extraJson: unknown): AppSmsRouteConfig {
-    const raw = asPlainObject(extraJson);
-    const providerId = String(raw.sms_provider_ref_id || '').trim();
-    const signatureId = String(raw.sms_signature_ref_id || '').trim();
-    const templateId = String(raw.sms_template_ref_id || '').trim();
-    return {
-      sms_provider_ref_id: providerId || undefined,
-      sms_signature_ref_id: signatureId || undefined,
-      sms_template_ref_id: templateId || undefined,
-    };
-  }
-
-  private async resolveSmsRouteConfig(app: AppWithSettings): Promise<SmsRouteConfigResolved> {
-    const appSmsConfig = this.extractAppSmsRouteConfig(app.settings?.extraJson);
-    const cacheKey = this.buildSmsRouteCacheKey(app.id, appSmsConfig);
-    const cached = this.smsRouteCache.get(cacheKey);
-    if (cached && cached.expires_at > Date.now()) {
-      return cached.value;
-    }
-
-    const relationRows = await (this.prisma.$queryRawUnsafe(
-      `SELECT
-         to_regclass('public.platform_sms_providers')::text AS providers_table,
-         to_regclass('public.platform_sms_signatures')::text AS signatures_table,
-         to_regclass('public.platform_sms_templates')::text AS templates_table`,
-    ) as Promise<Array<{ providers_table: string | null; signatures_table: string | null; templates_table: string | null }>>);
-    const relation = relationRows[0];
-    if (!relation?.providers_table || !relation?.signatures_table) {
-      throw new BadRequestException('短信服务未配置，请先在平台后台创建短信服务和签名');
-    }
-
-    const providerRowsRaw = await (this.prisma.$queryRawUnsafe(
-      `SELECT id, provider_type, name, is_active, is_default, config_json
-       FROM platform_sms_providers
-       WHERE is_active = true
-       ORDER BY is_default DESC, updated_at DESC, created_at DESC`,
-    ) as Promise<SmsProviderRow[]>);
-    const providerRows = providerRowsRaw.filter((row) => this.parseBooleanLike(asPlainObject(row.config_json).enabled, true));
-    if (!providerRows.length) {
-      throw new BadRequestException('短信服务未启用，请在平台后台开启一个短信服务');
-    }
-
-    let template: SmsTemplateRow | null = null;
-    if (relation.templates_table && appSmsConfig.sms_template_ref_id) {
-      const templateRows = await (this.prisma.$queryRawUnsafe(
-        `SELECT id, provider_id, template_code, template_name, is_active, is_default, meta_json
-         FROM platform_sms_templates
-         WHERE id = $1::uuid
-         LIMIT 1`,
-        appSmsConfig.sms_template_ref_id,
-      ) as Promise<SmsTemplateRow[]>);
-      const selectedTemplate = templateRows[0];
-      if (!selectedTemplate) {
-        throw new BadRequestException('当前应用配置的验证码模板不存在，请重新选择');
-      }
-      if (!selectedTemplate.is_active) {
-        throw new BadRequestException('当前应用配置的验证码模板未启用，请重新选择');
-      }
-      template = selectedTemplate;
-    }
-
-    let provider: SmsProviderRow | undefined;
-    if (appSmsConfig.sms_provider_ref_id) {
-      provider = providerRows.find((row) => row.id === appSmsConfig.sms_provider_ref_id);
-      if (!provider) {
-        throw new BadRequestException('当前应用配置的短信服务不可用，请重新选择');
-      }
-    }
-    if (!provider && template) {
-      provider = providerRows.find((row) => row.id === template!.provider_id);
-      if (!provider) {
-        throw new BadRequestException('当前应用验证码模板所属短信服务不可用，请重新选择模板');
-      }
-    }
-    if (!provider) {
-      provider = providerRows[0];
-    }
-
-    if (template && template.provider_id !== provider.id) {
-      throw new BadRequestException('验证码模板与短信服务不匹配，请重新配置应用短信模板');
-    }
-
-    let signature: SmsSignatureRow | null = null;
-    if (appSmsConfig.sms_signature_ref_id) {
-      const signatureRows = await (this.prisma.$queryRawUnsafe(
-        `SELECT id, provider_id, sign_name, is_active, is_default, meta_json
-         FROM platform_sms_signatures
-         WHERE id = $1::uuid AND provider_id = $2::uuid
-         LIMIT 1`,
-        appSmsConfig.sms_signature_ref_id,
-        provider.id,
-      ) as Promise<SmsSignatureRow[]>);
-      const selectedSignature = signatureRows[0];
-      if (!selectedSignature) {
-        throw new BadRequestException('当前应用配置的短信签名不可用，请重新选择');
-      }
-      if (!selectedSignature.is_active) {
-        throw new BadRequestException('当前应用配置的短信签名未启用，请重新选择');
-      }
-      signature = selectedSignature;
-    }
-
-    if (!signature) {
-      const signatureRows = await (this.prisma.$queryRawUnsafe(
-        `SELECT id, provider_id, sign_name, is_active, is_default, meta_json
-         FROM platform_sms_signatures
-         WHERE provider_id = $1::uuid AND is_active = true
-         ORDER BY is_default DESC, updated_at DESC, created_at DESC`,
-        provider.id,
-      ) as Promise<SmsSignatureRow[]>);
-      signature = signatureRows[0] || null;
-    }
-    if (!signature) {
-      throw new BadRequestException('短信签名未配置，请先创建并启用短信签名');
-    }
-
-    if (!template && relation.templates_table) {
-      const templateRows = await (this.prisma.$queryRawUnsafe(
-        `SELECT id, provider_id, template_code, template_name, is_active, is_default, meta_json
-         FROM platform_sms_templates
-         WHERE provider_id = $1::uuid AND is_active = true
-         ORDER BY is_default DESC, updated_at DESC, created_at DESC`,
-        provider.id,
-      ) as Promise<SmsTemplateRow[]>);
-      template = templateRows[0] || null;
-    }
-
-    const resolved = {
-      provider: {
-        ...provider,
-        provider_type: this.parseSmsProviderType(provider.provider_type),
-      } as SmsProviderRow,
-      signature,
-      template,
-    };
-    this.smsRouteCache.set(cacheKey, {
-      expires_at: Date.now() + this.smsRouteCacheTtlMs,
-      value: resolved,
-    });
-    return resolved;
-  }
-
-  private buildSmsRouteCacheKey(appId: string, routeConfig: AppSmsRouteConfig) {
-    return [
-      appId,
-      routeConfig.sms_provider_ref_id || '-',
-      routeConfig.sms_signature_ref_id || '-',
-      routeConfig.sms_template_ref_id || '-',
-    ].join('|');
-  }
-
-  private async dispatchSmsCode(
-    provider: SmsProviderRow,
-    signature: SmsSignatureRow,
-    template: SmsTemplateRow | null,
-    phone: string,
-    code: string,
-  ) {
-    if (provider.provider_type === 'GENERIC_API') {
-      await this.dispatchGenericApiSms(provider, signature, template, phone, code);
-      return;
-    }
-    await this.dispatchAliyunSms(provider, signature, template, phone, code);
-  }
-
-  private async dispatchGenericApiSms(
-    provider: SmsProviderRow,
-    signature: SmsSignatureRow,
-    template: SmsTemplateRow | null,
-    phone: string,
-    code: string,
-  ) {
-    const cfg = asPlainObject(provider.config_json);
-    const endpointUrl = String(cfg.endpoint_url || '').trim();
-    if (!endpointUrl) {
-      throw new BadRequestException('通用短信配置缺少 endpoint_url');
-    }
-    const method = String(cfg.http_method || 'POST').trim().toUpperCase() === 'GET' ? 'GET' : 'POST';
-    const authType = String(cfg.auth_type || 'NONE').trim().toUpperCase();
-    const authHeaderName = String(cfg.auth_header_name || '').trim() || 'Authorization';
-    const contentType = String(cfg.content_type || 'JSON').trim().toUpperCase() === 'FORM' ? 'FORM' : 'JSON';
-    const timeoutRaw = Number(cfg.timeout_ms ?? 15000);
-    const timeoutMs = Number.isFinite(timeoutRaw) ? Math.min(Math.max(Math.floor(timeoutRaw), 1000), 60000) : 15000;
-    const phoneField = String(cfg.phone_field || '').trim() || 'phone';
-    const codeField = String(cfg.code_field || '').trim() || 'code';
-    const signField = String(cfg.sign_field || '').trim() || 'sign_name';
-    const templateField = String(cfg.template_field || '').trim() || 'template_code';
-    const templateCode = this.pickSmsTemplateCode(template, asPlainObject(signature.meta_json), cfg);
-    const templateVars = this.pickSmsTemplateVariables(template);
-
-    const payload: Record<string, string> = {};
-    Object.entries(templateVars).forEach(([key, value]) => {
-      if (value === undefined || value === null) {
-        return;
-      }
-      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-        payload[key] = String(value);
-        return;
-      }
-      payload[key] = JSON.stringify(value);
-    });
-    payload[phoneField] = phone;
-    payload[codeField] = code;
-    if (signature.sign_name && signField) {
-      payload[signField] = signature.sign_name;
-    }
-    if (templateCode && templateField) {
-      payload[templateField] = templateCode;
-    }
-
-    const headers: Record<string, string> = {};
-    if (authType === 'BEARER') {
-      const token = String(cfg.auth_token || '').trim();
-      if (token) {
-        headers[authHeaderName] = token.toLowerCase().startsWith('bearer ') ? token : `Bearer ${token}`;
-      }
-    } else if (authType === 'API_KEY') {
-      const apiKey = String(cfg.api_key || '').trim();
-      if (apiKey) {
-        headers[authHeaderName] = apiKey;
-      }
-    }
-
-    let requestUrl = endpointUrl;
-    let body: string | undefined;
-    if (method === 'GET') {
-      const url = new URL(endpointUrl);
-      Object.entries(payload).forEach(([key, value]) => {
-        url.searchParams.set(key, value);
-      });
-      requestUrl = url.toString();
-    } else if (contentType === 'FORM') {
-      headers['Content-Type'] = 'application/x-www-form-urlencoded';
-      body = new URLSearchParams(payload).toString();
-    } else {
-      headers['Content-Type'] = 'application/json';
-      body = JSON.stringify(payload);
-    }
-
-    let response: Response;
-    try {
-      response = await fetch(requestUrl, {
-        method,
-        headers,
-        body: method === 'GET' ? undefined : body,
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-    } catch (error) {
-      this.rethrowSmsDispatchFetchError(error, `通用短信服务(${provider.name})`, timeoutMs);
-    }
-    if (!response.ok) {
-      const text = (await response.text()).slice(0, 300);
-      throw new BadRequestException(`短信服务请求失败(${response.status})${text ? `: ${text}` : ''}`);
-    }
-  }
-
-  private async dispatchAliyunSms(
-    provider: SmsProviderRow,
-    signature: SmsSignatureRow,
-    template: SmsTemplateRow | null,
-    phone: string,
-    code: string,
-  ) {
-    const cfg = asPlainObject(provider.config_json);
-    const accessKeyId = String(cfg.access_key_id || '').trim();
-    const accessKeySecret = String(cfg.access_key_secret || '').trim();
-    if (!accessKeyId || !accessKeySecret) {
-      throw new BadRequestException('阿里云短信配置缺少 access_key_id 或 access_key_secret');
-    }
-    const signName = String(signature.sign_name || '').trim();
-    if (!signName) {
-      throw new BadRequestException('阿里云短信签名为空，请检查短信签名配置');
-    }
-    const templateCode = this.pickSmsTemplateCode(template, asPlainObject(signature.meta_json), cfg);
-    if (!templateCode) {
-      throw new BadRequestException('阿里云短信模板未配置，请在模板列表中创建并启用默认模板');
-    }
-    const timeoutRaw = Number(cfg.timeout_ms ?? 15000);
-    const timeoutMs = Number.isFinite(timeoutRaw) ? Math.min(Math.max(Math.floor(timeoutRaw), 1000), 60000) : 15000;
-    const endpointUrl = String(cfg.endpoint_url || '').trim() || 'https://dysmsapi.aliyuncs.com/';
-    const regionId = String(cfg.region_id || '').trim() || 'cn-hangzhou';
-    const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
-
-    const templateVars = this.pickSmsTemplateVariables(template);
-    const templateParams = {
-      ...templateVars,
-      code,
-    };
-
-    const query: Record<string, string> = {
-      AccessKeyId: accessKeyId,
-      Action: 'SendSms',
-      Format: 'JSON',
-      PhoneNumbers: phone,
-      RegionId: regionId,
-      SignName: signName,
-      SignatureMethod: 'HMAC-SHA1',
-      SignatureNonce: randomUUID(),
-      SignatureVersion: '1.0',
-      TemplateCode: templateCode,
-      TemplateParam: JSON.stringify(templateParams),
-      Timestamp: timestamp,
-      Version: '2017-05-25',
-    };
-    const signedUrl = this.buildAliyunSignedUrl(endpointUrl, query, accessKeySecret);
-    let response: Response;
-    try {
-      response = await fetch(signedUrl, {
-        method: 'GET',
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-    } catch (error) {
-      this.rethrowSmsDispatchFetchError(error, `阿里云短信服务(${provider.name})`, timeoutMs);
-    }
-    const text = await response.text();
-    let payload: Record<string, unknown> = {};
-    try {
-      payload = JSON.parse(text) as Record<string, unknown>;
-    } catch {
-      payload = {};
-    }
-    if (!response.ok) {
-      const responseCode = String(payload.Code || payload.code || '').trim();
-      const responseMessage = String(payload.Message || payload.message || '').trim();
-      const detail = responseCode || responseMessage
-        ? `${responseCode}${responseMessage ? ` ${responseMessage}` : ''}`
-        : text.slice(0, 300);
-      throw new BadRequestException(`阿里云短信请求失败(${response.status})${detail ? `：${detail}` : ''}`);
-    }
-    const responseCode = String(payload.Code || '').trim().toUpperCase();
-    if (responseCode && responseCode !== 'OK') {
-      const message = String(payload.Message || '').trim();
-      throw new BadRequestException(`阿里云短信发送失败：${responseCode}${message ? ` ${message}` : ''}`);
-    }
-  }
-
-  private rethrowSmsDispatchFetchError(error: unknown, providerLabel: string, timeoutMs: number): never {
-    const name = String((error as { name?: unknown })?.name || '').trim();
-    const message = String((error as { message?: unknown })?.message || '').trim();
-    const lower = message.toLowerCase();
-    const isTimeout =
-      name === 'TimeoutError' ||
-      lower.includes('aborted due to timeout') ||
-      lower.includes('request timed out');
-
-    if (isTimeout) {
-      throw new BadGatewayException(`${providerLabel}请求超时（${timeoutMs}ms），请检查服务商连通性或调大 timeout_ms`);
-    }
-
-    const reason = message ? message.slice(0, 240) : 'network error';
-    this.logger.error(`${providerLabel}网络异常: ${reason}`);
-    throw new BadGatewayException(`${providerLabel}请求失败：${reason}`);
-  }
-
-  private pickSmsTemplateCode(
-    template: SmsTemplateRow | null,
-    signatureMeta: Record<string, unknown>,
-    providerConfig: Record<string, unknown>,
-  ) {
-    const tableTemplate = String(template?.template_code || '').trim();
-    if (tableTemplate) {
-      return tableTemplate;
-    }
-    const signatureTemplate = String(signatureMeta.template_code || signatureMeta.templateCode || '').trim();
-    if (signatureTemplate) {
-      return signatureTemplate;
-    }
-    return String(providerConfig.template_code || providerConfig.templateCode || '').trim();
-  }
-
-  private pickSmsTemplateVariables(template: SmsTemplateRow | null): Record<string, unknown> {
-    if (!template) {
-      return {};
-    }
-    const meta = asPlainObject(template.meta_json);
-    const candidates = [
-      meta.variables_example,
-      meta.variables_sample,
-      meta.template_params_example,
-      meta.template_params_sample,
-      meta.template_param_example,
-    ];
-    for (const candidate of candidates) {
-      if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
-        return candidate as Record<string, unknown>;
-      }
-    }
-    return {};
-  }
-
-  private buildAliyunSignedUrl(endpointUrl: string, params: Record<string, string>, accessKeySecret: string) {
-    let parsed: URL;
-    try {
-      parsed = new URL(endpointUrl);
-    } catch {
-      throw new BadRequestException('阿里云 endpoint_url 非法');
-    }
-    parsed.hash = '';
-    parsed.search = '';
-    // Aliyun RPC requires strict lexicographical ordering by parameter name.
-    const sortedKeys = Object.keys(params).sort();
-    const canonicalizedQueryString = sortedKeys
-      .map((key) => `${this.aliyunPercentEncode(key)}=${this.aliyunPercentEncode(String(params[key] ?? ''))}`)
-      .join('&');
-    const stringToSign = `GET&%2F&${this.aliyunPercentEncode(canonicalizedQueryString)}`;
-    const signature = createHmac('sha1', `${accessKeySecret}&`).update(stringToSign).digest('base64');
-    const query = `${canonicalizedQueryString}&Signature=${this.aliyunPercentEncode(signature)}`;
-    return `${parsed.origin}${parsed.pathname || '/'}?${query}`;
-  }
-
-  private aliyunPercentEncode(value: string) {
-    return encodeURIComponent(String(value || ''))
-      .replace(/\+/g, '%20')
-      .replace(/\*/g, '%2A')
-      .replace(/%7E/g, '~');
   }
 
   private async ensureWechatOpenAppSchema() {

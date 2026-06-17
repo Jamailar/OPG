@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  PlatformSmsEventItem,
+  PlatformSmsProviderCatalogItem,
   PlatformSmsProviderConfig,
   PlatformSmsProviderItem,
   PlatformSmsProviderType,
@@ -10,7 +12,7 @@ import {
 import { pickApiData, pickApiErrorMessage } from '@/lib/api-response';
 
 type Message = { type: 'success' | 'error'; text: string } | null;
-type SmsWorkspaceTab = 'providers' | 'signatures' | 'templates';
+type SmsWorkspaceTab = 'providers' | 'signatures' | 'templates' | 'events';
 
 type SmsProviderForm = {
   id?: string;
@@ -36,6 +38,7 @@ type SmsTemplateForm = {
   provider_id: string;
   template_code: string;
   template_name: string;
+  message_template: string;
   variables_example_json: string;
   is_active: boolean;
   is_default: boolean;
@@ -69,8 +72,175 @@ const DEFAULT_ALIYUN_CONFIG: PlatformSmsProviderConfig = {
   timeout_ms: 10000,
 };
 
-const createProviderConfigByType = (type: PlatformSmsProviderType): PlatformSmsProviderConfig =>
-  type === 'GENERIC_API' ? { ...DEFAULT_GENERIC_CONFIG } : { ...DEFAULT_ALIYUN_CONFIG };
+const SMS_PROVIDER_LABELS: Record<PlatformSmsProviderType, string> = {
+  GENERIC_API: '通用 API',
+  ALIYUN_SMS: '阿里云短信',
+  TENCENT_SMS: '腾讯云短信',
+  HUAWEI_SMS: '华为云短信',
+  VOLCENGINE_SMS: '火山引擎短信',
+  TWILIO_SMS: 'Twilio',
+  VONAGE_SMS: 'Vonage',
+  MESSAGEBIRD_SMS: 'MessageBird',
+  PLIVO_SMS: 'Plivo',
+  AWS_SNS: 'AWS SNS',
+};
+
+const DEFAULT_PROVIDER_CONFIGS: Record<PlatformSmsProviderType, PlatformSmsProviderConfig> = {
+  GENERIC_API: DEFAULT_GENERIC_CONFIG,
+  ALIYUN_SMS: DEFAULT_ALIYUN_CONFIG,
+  TENCENT_SMS: {
+    enabled: true,
+    dispatch_mode: 'ASYNC',
+    endpoint_url: 'https://sms.tencentcloudapi.com',
+    region_id: 'ap-guangzhou',
+    secret_id: '',
+    secret_key: '',
+    sdk_app_id: '',
+    timeout_ms: 10000,
+  },
+  HUAWEI_SMS: {
+    enabled: true,
+    dispatch_mode: 'ASYNC',
+    endpoint_url: '',
+    app_key: '',
+    app_secret: '',
+    sender: '',
+    status_callback: '',
+    timeout_ms: 10000,
+  },
+  VOLCENGINE_SMS: {
+    enabled: true,
+    dispatch_mode: 'ASYNC',
+    endpoint_url: 'https://sms.volcengineapi.com',
+    region_id: 'cn-north-1',
+    access_key_id: '',
+    access_key_secret: '',
+    sms_account: '',
+    timeout_ms: 10000,
+  },
+  TWILIO_SMS: {
+    enabled: true,
+    dispatch_mode: 'ASYNC',
+    account_sid: '',
+    auth_token: '',
+    from: '',
+    messaging_service_sid: '',
+    timeout_ms: 10000,
+  },
+  VONAGE_SMS: {
+    enabled: true,
+    dispatch_mode: 'ASYNC',
+    endpoint_url: 'https://rest.nexmo.com/sms/json',
+    api_key: '',
+    api_secret: '',
+    from: '',
+    timeout_ms: 10000,
+  },
+  MESSAGEBIRD_SMS: {
+    enabled: true,
+    dispatch_mode: 'ASYNC',
+    endpoint_url: 'https://rest.messagebird.com/messages',
+    access_key: '',
+    originator: '',
+    timeout_ms: 10000,
+  },
+  PLIVO_SMS: {
+    enabled: true,
+    dispatch_mode: 'ASYNC',
+    endpoint_url: '',
+    auth_id: '',
+    auth_token: '',
+    src: '',
+    timeout_ms: 10000,
+  },
+  AWS_SNS: {
+    enabled: true,
+    dispatch_mode: 'ASYNC',
+    region_id: 'us-east-1',
+    access_key_id: '',
+    secret_access_key: '',
+    sender_id: '',
+    timeout_ms: 10000,
+  },
+};
+
+const PROVIDER_FIELD_GROUPS: Record<PlatformSmsProviderType, Array<{ key: keyof PlatformSmsProviderConfig; label: string; placeholder?: string; span?: boolean }>> = {
+  GENERIC_API: [],
+  ALIYUN_SMS: [
+    { key: 'endpoint_url', label: '接口地址', placeholder: 'https://dysmsapi.aliyuncs.com/', span: true },
+    { key: 'region_id', label: 'Region', placeholder: 'cn-hangzhou' },
+    { key: 'access_key_id', label: 'AccessKey ID' },
+    { key: 'access_key_secret', label: 'AccessKey Secret（更新可留空）', span: true },
+  ],
+  TENCENT_SMS: [
+    { key: 'endpoint_url', label: '接口地址', placeholder: 'https://sms.tencentcloudapi.com', span: true },
+    { key: 'region_id', label: 'Region', placeholder: 'ap-guangzhou' },
+    { key: 'sdk_app_id', label: 'SDK App ID' },
+    { key: 'secret_id', label: 'Secret ID' },
+    { key: 'secret_key', label: 'Secret Key（更新可留空）' },
+  ],
+  HUAWEI_SMS: [
+    { key: 'endpoint_url', label: '接口地址', span: true },
+    { key: 'app_key', label: 'App Key' },
+    { key: 'app_secret', label: 'App Secret（更新可留空）' },
+    { key: 'sender', label: 'Sender' },
+    { key: 'status_callback', label: 'Callback URL', span: true },
+  ],
+  VOLCENGINE_SMS: [
+    { key: 'endpoint_url', label: '接口地址', placeholder: 'https://sms.volcengineapi.com', span: true },
+    { key: 'region_id', label: 'Region', placeholder: 'cn-north-1' },
+    { key: 'sms_account', label: 'SmsAccount' },
+    { key: 'access_key_id', label: 'AccessKey ID' },
+    { key: 'access_key_secret', label: 'AccessKey Secret（更新可留空）' },
+  ],
+  TWILIO_SMS: [
+    { key: 'account_sid', label: 'Account SID' },
+    { key: 'auth_token', label: 'Auth Token（更新可留空）' },
+    { key: 'from', label: 'From' },
+    { key: 'messaging_service_sid', label: 'Messaging Service SID' },
+  ],
+  VONAGE_SMS: [
+    { key: 'endpoint_url', label: '接口地址', placeholder: 'https://rest.nexmo.com/sms/json', span: true },
+    { key: 'api_key', label: 'API Key' },
+    { key: 'api_secret', label: 'API Secret（更新可留空）' },
+    { key: 'from', label: 'From' },
+  ],
+  MESSAGEBIRD_SMS: [
+    { key: 'endpoint_url', label: '接口地址', placeholder: 'https://rest.messagebird.com/messages', span: true },
+    { key: 'access_key', label: 'Access Key（更新可留空）' },
+    { key: 'originator', label: 'Originator' },
+  ],
+  PLIVO_SMS: [
+    { key: 'endpoint_url', label: '接口地址', span: true },
+    { key: 'auth_id', label: 'Auth ID' },
+    { key: 'auth_token', label: 'Auth Token（更新可留空）' },
+    { key: 'src', label: 'Src' },
+  ],
+  AWS_SNS: [
+    { key: 'region_id', label: 'Region', placeholder: 'us-east-1' },
+    { key: 'access_key_id', label: 'AccessKey ID' },
+    { key: 'secret_access_key', label: 'Secret Access Key（更新可留空）', span: true },
+    { key: 'sender_id', label: 'Sender ID' },
+  ],
+};
+
+const SECRET_CONFIG_KEYS = [
+  'auth_token',
+  'api_key',
+  'access_key_secret',
+  'secret_key',
+  'app_secret',
+  'account_sid',
+  'api_secret',
+  'access_key',
+  'auth_id',
+  'secret_access_key',
+];
+
+const createProviderConfigByType = (type: PlatformSmsProviderType): PlatformSmsProviderConfig => ({ ...DEFAULT_PROVIDER_CONFIGS[type] });
+
+const getDefaultDispatchMode = (type: PlatformSmsProviderType) =>
+  String(DEFAULT_PROVIDER_CONFIGS[type]?.dispatch_mode || (type === 'GENERIC_API' ? 'SYNC' : 'ASYNC'));
 
 const EMPTY_PROVIDER_FORM: SmsProviderForm = {
   provider_type: 'GENERIC_API',
@@ -93,6 +263,7 @@ const EMPTY_TEMPLATE_FORM: SmsTemplateForm = {
   provider_id: '',
   template_code: '',
   template_name: '',
+  message_template: '',
   variables_example_json: '{\n  "code": "123456"\n}',
   is_active: true,
   is_default: false,
@@ -119,6 +290,14 @@ function pickTemplateVariablesExample(meta: unknown): Record<string, unknown> | 
   return null;
 }
 
+function pickTemplateMessage(meta: unknown): string {
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) {
+    return '';
+  }
+  const raw = meta as Record<string, unknown>;
+  return String(raw.message_template || raw.message || raw.body || '').trim();
+}
+
 function parseTemplateVariablesExample(input: string): Record<string, unknown> {
   const trimmed = input.trim();
   if (!trimmed) {
@@ -136,6 +315,13 @@ function parseTemplateVariablesExample(input: string): Record<string, unknown> {
 }
 
 function toProviderForm(item: PlatformSmsProviderItem): SmsProviderForm {
+  const config = {
+    ...createProviderConfigByType(item.provider_type),
+    ...item.config,
+  };
+  for (const key of SECRET_CONFIG_KEYS) {
+    config[key] = '';
+  }
   return {
     id: item.id,
     provider_type: item.provider_type,
@@ -143,13 +329,7 @@ function toProviderForm(item: PlatformSmsProviderItem): SmsProviderForm {
     is_active: item.is_active,
     is_default: item.is_default,
     notes: item.notes || '',
-    config: {
-      ...createProviderConfigByType(item.provider_type),
-      ...item.config,
-      auth_token: '',
-      api_key: '',
-      access_key_secret: '',
-    },
+    config,
   };
 }
 
@@ -171,6 +351,7 @@ function toTemplateForm(item: PlatformSmsTemplateItem): SmsTemplateForm {
     provider_id: item.provider_id,
     template_code: item.template_code,
     template_name: item.template_name || '',
+    message_template: pickTemplateMessage(item.meta),
     variables_example_json: variables ? JSON.stringify(variables, null, 2) : '{\n  "code": "123456"\n}',
     is_active: item.is_active,
     is_default: item.is_default,
@@ -183,8 +364,12 @@ export default function PlatformSmsServicesPage() {
   const [message, setMessage] = useState<Message>(null);
 
   const [providers, setProviders] = useState<PlatformSmsProviderItem[]>([]);
+  const [providerCatalog, setProviderCatalog] = useState<PlatformSmsProviderCatalogItem[]>([]);
   const [signatures, setSignatures] = useState<PlatformSmsSignatureItem[]>([]);
   const [templates, setTemplates] = useState<PlatformSmsTemplateItem[]>([]);
+  const [events, setEvents] = useState<PlatformSmsEventItem[]>([]);
+  const [eventsTotal, setEventsTotal] = useState(0);
+  const [eventsLoading, setEventsLoading] = useState(false);
   const [selectedProviderId, setSelectedProviderId] = useState('');
   const [activeTab, setActiveTab] = useState<SmsWorkspaceTab>('providers');
   const [editorOpen, setEditorOpen] = useState<SmsWorkspaceTab | ''>('');
@@ -202,6 +387,12 @@ export default function PlatformSmsServicesPage() {
   const [templateForm, setTemplateForm] = useState<SmsTemplateForm>(EMPTY_TEMPLATE_FORM);
   const [templateEditing, setTemplateEditing] = useState(false);
   const [templateSaving, setTemplateSaving] = useState(false);
+
+  const providerCatalogMap = useMemo(() => {
+    const map = new Map<string, PlatformSmsProviderCatalogItem>();
+    providerCatalog.forEach((item) => map.set(item.provider_type, item));
+    return map;
+  }, [providerCatalog]);
 
   const providerNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -228,22 +419,27 @@ export default function PlatformSmsServicesPage() {
       { key: 'providers' as const, label: '短信服务', count: providers.length, active: providers.filter((item) => item.is_active).length },
       { key: 'signatures' as const, label: '签名', count: signatures.length, active: signatures.filter((item) => item.is_active).length },
       { key: 'templates' as const, label: '模板', count: templates.length, active: templates.filter((item) => item.is_active).length },
+      { key: 'events' as const, label: '日志', count: eventsTotal, active: events.filter((item) => item.status === 'SUCCESS').length },
     ],
-    [providers, signatures, templates],
+    [providers, signatures, templates, events, eventsTotal],
   );
 
   const loadData = async () => {
     setLoading(true);
     setMessage(null);
     try {
-      const [providersResp, signaturesResp, templatesResp] = await Promise.all([
+      const [providersResp, signaturesResp, templatesResp, catalogResp, eventsResp] = await Promise.all([
         platformApi.listGlobalSmsProviders(),
         platformApi.listGlobalSmsSignatures(),
         platformApi.listGlobalSmsTemplates(),
+        platformApi.listSmsProviderCatalog(),
+        platformApi.listSmsEvents({ page_size: 30 }),
       ]);
       const providersPayload = pickApiData<{ items: PlatformSmsProviderItem[] }>(providersResp);
       const signaturesPayload = pickApiData<{ items: PlatformSmsSignatureItem[] }>(signaturesResp);
       const templatesPayload = pickApiData<{ items: PlatformSmsTemplateItem[] }>(templatesResp);
+      const catalogPayload = pickApiData<{ items: PlatformSmsProviderCatalogItem[] }>(catalogResp);
+      const eventsPayload = pickApiData<{ items: PlatformSmsEventItem[]; total: number }>(eventsResp);
       const providerItems = providersPayload?.items || [];
       const signatureItems = signaturesPayload?.items || [];
       const templateItems = templatesPayload?.items || [];
@@ -251,6 +447,9 @@ export default function PlatformSmsServicesPage() {
       setProviders(providerItems);
       setSignatures(signatureItems);
       setTemplates(templateItems);
+      setProviderCatalog(catalogPayload?.items || []);
+      setEvents(eventsPayload?.items || []);
+      setEventsTotal(Number(eventsPayload?.total || 0));
       setSelectedProviderId((current) => {
         if (current && providerItems.some((item) => item.id === current)) {
           return current;
@@ -261,6 +460,23 @@ export default function PlatformSmsServicesPage() {
       setMessage({ type: 'error', text: pickApiErrorMessage(error, '加载短信配置失败') });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadEvents = async () => {
+    setEventsLoading(true);
+    try {
+      const eventsResp = await platformApi.listSmsEvents({
+        provider_id: selectedProviderId || undefined,
+        page_size: 30,
+      });
+      const eventsPayload = pickApiData<{ items: PlatformSmsEventItem[]; total: number }>(eventsResp);
+      setEvents(eventsPayload?.items || []);
+      setEventsTotal(Number(eventsPayload?.total || 0));
+    } catch (error: any) {
+      setMessage({ type: 'error', text: pickApiErrorMessage(error, '加载短信日志失败') });
+    } finally {
+      setEventsLoading(false);
     }
   };
 
@@ -344,17 +560,9 @@ export default function PlatformSmsServicesPage() {
       }
 
       if (providerForm.id) {
-        if (providerForm.provider_type === 'GENERIC_API') {
-          if (!String(payload.config.auth_token || '').trim()) {
-            delete payload.config.auth_token;
-          }
-          if (!String(payload.config.api_key || '').trim()) {
-            delete payload.config.api_key;
-          }
-        }
-        if (providerForm.provider_type === 'ALIYUN_SMS') {
-          if (!String(payload.config.access_key_secret || '').trim()) {
-            delete payload.config.access_key_secret;
+        for (const key of SECRET_CONFIG_KEYS) {
+          if (!String(payload.config[key] || '').trim()) {
+            delete payload.config[key];
           }
         }
       }
@@ -496,6 +704,7 @@ export default function PlatformSmsServicesPage() {
         notes: templateForm.notes.trim() || undefined,
         meta: {
           variables_example: parseTemplateVariablesExample(templateForm.variables_example_json),
+          message_template: templateForm.message_template.trim() || undefined,
         },
       };
 
@@ -551,8 +760,8 @@ export default function PlatformSmsServicesPage() {
           <h1>短信服务</h1>
           <p>配置短信通道、签名和验证码模板。</p>
         </div>
-        <button className="btn btn-secondary btn-sm" onClick={loadData} disabled={loading}>
-          {loading ? '刷新中...' : '刷新'}
+        <button className="btn btn-secondary btn-sm" onClick={activeTab === 'events' ? loadEvents : loadData} disabled={loading || eventsLoading}>
+          {loading || eventsLoading ? '刷新中...' : '刷新'}
         </button>
       </div>
 
@@ -598,7 +807,7 @@ export default function PlatformSmsServicesPage() {
                 {providers.map((item) => (
                   <tr key={item.id} className={selectedProviderId === item.id ? 'table-row-selected' : ''}>
                     <td>{item.name}</td>
-                    <td>{item.provider_type === 'ALIYUN_SMS' ? '阿里云短信' : '通用 API'}</td>
+                    <td>{providerCatalogMap.get(item.provider_type)?.label || item.provider_label || SMS_PROVIDER_LABELS[item.provider_type] || item.provider_type}</td>
                     <td>
                       <span className={`status-tag ${item.is_active ? 'success' : 'warning'}`}>
                         {item.is_active ? 'ACTIVE' : 'INACTIVE'}
@@ -658,10 +867,13 @@ export default function PlatformSmsServicesPage() {
           <form onSubmit={saveProvider} className="platform-form-grid">
             <div className="form-group">
               <label>类型</label>
-              <select value={providerForm.provider_type} onChange={(e) => onProviderTypeChange(e.target.value as PlatformSmsProviderType)}>
-                <option value="GENERIC_API">通用 API</option>
-                <option value="ALIYUN_SMS">阿里云短信</option>
-              </select>
+	              <select value={providerForm.provider_type} onChange={(e) => onProviderTypeChange(e.target.value as PlatformSmsProviderType)}>
+	                {Object.entries(SMS_PROVIDER_LABELS).map(([value, label]) => (
+	                  <option key={value} value={value}>
+	                    {label}
+	                  </option>
+	                ))}
+	              </select>
             </div>
 
             <div className="form-group">
@@ -728,7 +940,7 @@ export default function PlatformSmsServicesPage() {
             <div className="form-group">
               <label>发送模式</label>
               <select
-                value={String(providerForm.config.dispatch_mode || (providerForm.provider_type === 'ALIYUN_SMS' ? 'ASYNC' : 'SYNC'))}
+                value={String(providerForm.config.dispatch_mode || getDefaultDispatchMode(providerForm.provider_type))}
                 onChange={(e) =>
                   setProviderForm((prev) => ({
                     ...prev,
@@ -878,51 +1090,22 @@ export default function PlatformSmsServicesPage() {
                   />
                 </div>
               </>
-            ) : (
-              <>
-                <div className="form-group platform-form-span-2">
-                  <label>接口地址</label>
-                  <input
-                    value={providerForm.config.endpoint_url || ''}
-                    onChange={(e) =>
-                      setProviderForm((prev) => ({ ...prev, config: { ...prev.config, endpoint_url: e.target.value } }))
-                    }
-                    placeholder="https://dysmsapi.aliyuncs.com/"
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>Region</label>
-                  <input
-                    value={providerForm.config.region_id || ''}
-                    onChange={(e) =>
-                      setProviderForm((prev) => ({ ...prev, config: { ...prev.config, region_id: e.target.value } }))
-                    }
-                    placeholder="cn-hangzhou"
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>AccessKey ID</label>
-                  <input
-                    value={providerForm.config.access_key_id || ''}
-                    onChange={(e) =>
-                      setProviderForm((prev) => ({ ...prev, config: { ...prev.config, access_key_id: e.target.value } }))
-                    }
-                  />
-                </div>
-
-                <div className="form-group platform-form-span-2">
-                  <label>AccessKey Secret（更新可留空）</label>
-                  <input
-                    value={providerForm.config.access_key_secret || ''}
-                    onChange={(e) =>
-                      setProviderForm((prev) => ({ ...prev, config: { ...prev.config, access_key_secret: e.target.value } }))
-                    }
-                  />
-                </div>
-              </>
-            )}
+	            ) : (
+	              <>
+	                {PROVIDER_FIELD_GROUPS[providerForm.provider_type].map((field) => (
+	                  <div key={String(field.key)} className={`form-group ${field.span ? 'platform-form-span-2' : ''}`}>
+	                    <label>{field.label}</label>
+	                    <input
+	                      value={String(providerForm.config[field.key] || '')}
+	                      onChange={(e) =>
+	                        setProviderForm((prev) => ({ ...prev, config: { ...prev.config, [field.key]: e.target.value } }))
+	                      }
+	                      placeholder={field.placeholder}
+	                    />
+	                  </div>
+	                ))}
+	              </>
+	            )}
 
             <div className="platform-form-actions platform-form-span-2">
               <button className="btn" type="submit" disabled={providerSaving}>
@@ -1238,6 +1421,16 @@ export default function PlatformSmsServicesPage() {
             </div>
 
             <div className="form-group platform-form-span-2">
+              <label>短信内容（可选）</label>
+              <textarea
+                rows={3}
+                value={templateForm.message_template}
+                onChange={(e) => setTemplateForm((prev) => ({ ...prev, message_template: e.target.value }))}
+                placeholder="Your verification code is {{code}}."
+              />
+            </div>
+
+            <div className="form-group platform-form-span-2">
               <label>模板变量示例（JSON）</label>
               <textarea
                 rows={6}
@@ -1261,6 +1454,67 @@ export default function PlatformSmsServicesPage() {
         )}
 
       </div>
+      )}
+
+      {activeTab === 'events' && (
+        <div className="platform-grid-two tenants-layout sms-workbench">
+          <section className="card sms-list-card">
+            <div className="platform-section-head">
+              <h3>短信日志</h3>
+              <div className="btn-group">
+                <select value={selectedProviderId} onChange={(e) => setSelectedProviderId(e.target.value)} className="sms-provider-filter">
+                  <option value="">全部服务</option>
+                  {providers.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+                <button className="btn btn-secondary btn-sm" type="button" onClick={loadEvents} disabled={eventsLoading}>
+                  {eventsLoading ? '刷新中...' : '刷新日志'}
+                </button>
+              </div>
+            </div>
+
+            <div className="platform-api-table-wrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>时间</th>
+                    <th>供应商</th>
+                    <th>模板</th>
+                    <th>用途</th>
+                    <th>状态</th>
+                    <th>耗时</th>
+                    <th>Trace</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {events.map((item) => (
+                    <tr key={item.id}>
+                      <td>{item.created_at ? new Date(item.created_at).toLocaleString() : '-'}</td>
+                      <td>{item.provider_name || item.provider_type}</td>
+                      <td>{item.template_code || '-'}</td>
+                      <td>{item.purpose}</td>
+                      <td>
+                        <span className={`status-tag ${item.status === 'SUCCESS' ? 'success' : item.status === 'FAILED' ? 'danger' : 'warning'}`}>
+                          {item.status}
+                        </span>
+                      </td>
+                      <td>{Number(item.duration_ms || 0)}ms</td>
+                      <td><code>{item.trace_id}</code></td>
+                    </tr>
+                  ))}
+                  {!events.length && (
+                    <tr>
+                      <td colSpan={7}>暂无短信日志</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
       )}
     </div>
   );

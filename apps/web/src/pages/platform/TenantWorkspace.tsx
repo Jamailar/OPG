@@ -33,6 +33,8 @@ import {
   PlatformEmailTemplateItem,
   PlatformPermissionCatalogItem,
   PlatformMyAppAdminPermissions,
+  PlatformSmsProviderItem,
+  PlatformSmsSignatureItem,
   PlatformSmsTemplateItem,
   PlatformTenantAdminItem,
   PlatformTenantStats,
@@ -584,7 +586,11 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
   const [paymentMethodsError, setPaymentMethodsError] = useState('');
   const [paymentMethodRefIdsInput, setPaymentMethodRefIdsInput] = useState<string[]>([]);
   const [smsTemplates, setSmsTemplates] = useState<PlatformSmsTemplateItem[]>([]);
+  const [smsProviders, setSmsProviders] = useState<PlatformSmsProviderItem[]>([]);
+  const [smsSignatures, setSmsSignatures] = useState<PlatformSmsSignatureItem[]>([]);
   const [smsTemplatesError, setSmsTemplatesError] = useState('');
+  const [smsProviderRefIdInput, setSmsProviderRefIdInput] = useState('');
+  const [smsSignatureRefIdInput, setSmsSignatureRefIdInput] = useState('');
   const [smsTemplateRefIdInput, setSmsTemplateRefIdInput] = useState('');
   const [wechatSettingsSaving, setWechatSettingsSaving] = useState(false);
   const [smsTestPhoneInput, setSmsTestPhoneInput] = useState('');
@@ -609,6 +615,7 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
 
   const [aiSources, setAiSources] = useState<PlatformAiSourceItem[]>([]);
   const [modelRoutes, setModelRoutes] = useState<PlatformAppAiModelRouteItem[]>([]);
+  const [modelVisibilitySaving, setModelVisibilitySaving] = useState('');
   const [defaultModelSlots, setDefaultModelSlots] = useState<PlatformAppAiDefaultModelSlotItem[]>([]);
   const [defaultModelSlotDrafts, setDefaultModelSlotDrafts] = useState<DefaultModelSlotDrafts>(() =>
     createEmptyDefaultModelSlotDrafts(),
@@ -751,6 +758,11 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
     return map;
   }, [defaultModelSlots]);
 
+  const visibleModelCount = useMemo(
+    () => modelRoutes.filter((route) => route.app_visibility?.effective_is_visible !== false).length,
+    [modelRoutes],
+  );
+
   const savedWechatOpenAppRefId = useMemo(
     () => String(appDetail?.settings?.wechat_open_app_ref_id || '').trim(),
     [appDetail?.settings?.wechat_open_app_ref_id],
@@ -834,6 +846,46 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
   const savedSmsTemplateRefId = useMemo(
     () => String(appDetail?.settings?.sms_template_ref_id || '').trim(),
     [appDetail?.settings?.sms_template_ref_id],
+  );
+
+  const savedSmsProviderRefId = useMemo(
+    () => String(appDetail?.settings?.sms_provider_ref_id || '').trim(),
+    [appDetail?.settings?.sms_provider_ref_id],
+  );
+
+  const savedSmsSignatureRefId = useMemo(
+    () => String(appDetail?.settings?.sms_signature_ref_id || '').trim(),
+    [appDetail?.settings?.sms_signature_ref_id],
+  );
+
+  const selectedSmsProvider = useMemo(
+    () => smsProviders.find((item) => item.id === smsProviderRefIdInput) || null,
+    [smsProviders, smsProviderRefIdInput],
+  );
+
+  const selectedSmsSignature = useMemo(
+    () => smsSignatures.find((item) => item.id === smsSignatureRefIdInput) || null,
+    [smsSignatures, smsSignatureRefIdInput],
+  );
+
+  const filteredSmsSignatures = useMemo(
+    () => (smsProviderRefIdInput ? smsSignatures.filter((item) => item.provider_id === smsProviderRefIdInput) : smsSignatures),
+    [smsSignatures, smsProviderRefIdInput],
+  );
+
+  const filteredSmsTemplates = useMemo(
+    () => (smsProviderRefIdInput ? smsTemplates.filter((item) => item.provider_id === smsProviderRefIdInput) : smsTemplates),
+    [smsTemplates, smsProviderRefIdInput],
+  );
+
+  const savedSmsProvider = useMemo(
+    () => smsProviders.find((item) => item.id === savedSmsProviderRefId) || null,
+    [smsProviders, savedSmsProviderRefId],
+  );
+
+  const savedSmsSignature = useMemo(
+    () => smsSignatures.find((item) => item.id === savedSmsSignatureRefId) || null,
+    [smsSignatures, savedSmsSignatureRefId],
   );
 
   const savedSmsTemplate = useMemo(
@@ -1170,6 +1222,8 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
       setVideoProxyRetentionDaysInput(String(videoProxy.retention_days || 7));
       setVideoProxyMaxFileMbInput(String(videoProxy.max_file_mb || 1024));
       setPaymentMethodRefIdsInput(Array.isArray(detail?.settings?.payment_method_ref_ids) ? detail.settings.payment_method_ref_ids : []);
+      setSmsProviderRefIdInput(String(detail?.settings?.sms_provider_ref_id || '').trim());
+      setSmsSignatureRefIdInput(String(detail?.settings?.sms_signature_ref_id || '').trim());
       setSmsTemplateRefIdInput(String(detail?.settings?.sms_template_ref_id || '').trim());
       setStats(pickApiData<PlatformTenantStats>(statsResp));
 
@@ -1289,13 +1343,23 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
         }
 
         try {
-          const smsTemplatesResp = await platformApi.listGlobalSmsTemplates();
+          const [smsProvidersResp, smsSignaturesResp, smsTemplatesResp] = await Promise.all([
+            platformApi.listGlobalSmsProviders(),
+            platformApi.listGlobalSmsSignatures(),
+            platformApi.listGlobalSmsTemplates(),
+          ]);
+          const smsProvidersPayload = pickApiData<{ items: PlatformSmsProviderItem[] }>(smsProvidersResp);
+          const smsSignaturesPayload = pickApiData<{ items: PlatformSmsSignatureItem[] }>(smsSignaturesResp);
           const smsTemplatesPayload = pickApiData<{ items: PlatformSmsTemplateItem[] }>(smsTemplatesResp);
+          setSmsProviders(smsProvidersPayload?.items || []);
+          setSmsSignatures(smsSignaturesPayload?.items || []);
           setSmsTemplates(smsTemplatesPayload?.items || []);
           setSmsTemplatesError('');
         } catch (smsError: any) {
+          setSmsProviders([]);
+          setSmsSignatures([]);
           setSmsTemplates([]);
-          setSmsTemplatesError(pickApiErrorMessage(smsError, '当前账号无权限读取短信模板池'));
+          setSmsTemplatesError(pickApiErrorMessage(smsError, '当前账号无权限读取短信配置池'));
         }
       } else {
         setWechatOpenApps([]);
@@ -1303,6 +1367,8 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
         setGithubOAuthApps([]);
         setAppleLoginCredentials([]);
         setPaymentMethods([]);
+        setSmsProviders([]);
+        setSmsSignatures([]);
         setSmsTemplates([]);
         setWechatOpenAppsError('');
         setGoogleOAuthClientsError('');
@@ -1551,6 +1617,8 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
               .map((item) => item.trim())
               .filter(Boolean),
           },
+          sms_provider_ref_id: smsProviderRefIdInput || '',
+          sms_signature_ref_id: smsSignatureRefIdInput || '',
           sms_template_ref_id: smsTemplateRefIdInput || '',
         },
       });
@@ -1716,6 +1784,22 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
         [field]: value,
       },
     }));
+  };
+
+  const toggleModelVisibility = async (route: PlatformAppAiModelRouteItem) => {
+    if (!appId) return;
+    const nextVisible = route.app_visibility?.effective_is_visible === false;
+    setModelVisibilitySaving(route.model_id);
+    setMessage(null);
+    try {
+      await platformApi.updateAppAiModelVisibility(appId, route.model_id, { is_visible: nextVisible });
+      setMessage({ type: 'success', text: nextVisible ? '模型已展示' : '模型已隐藏' });
+      await loadData();
+    } catch (error: any) {
+      setMessage({ type: 'error', text: pickApiErrorMessage(error, '更新模型展示状态失败') });
+    } finally {
+      setModelVisibilitySaving('');
+    }
   };
 
   const saveDefaultModelSlot = async (slotKey: PlatformAppAiDefaultModelSlotKey) => {
@@ -2858,28 +2942,70 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
               <p style={{ color: 'var(--text-secondary)', marginTop: 8, fontSize: 12 }}>待保存配置：使用平台默认</p>
             )}
           </div>
-          <div className="form-group">
-            <label>验证码模板</label>
-            <select
-              value={smsTemplateRefIdInput}
-              onChange={(event) => setSmsTemplateRefIdInput(event.target.value)}
-              disabled={!smsTemplates.length}
-            >
-              <option value="">使用全局默认（自动匹配）</option>
-              {smsTemplates.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.template_name || item.template_code} ({item.template_code}){item.is_active ? '' : ' [INACTIVE]'}
-                </option>
-              ))}
-            </select>
-            {selectedSmsTemplate ? (
-              <p style={{ color: 'var(--text-secondary)', marginTop: 8, fontSize: 12 }}>
-                待保存配置：{selectedSmsTemplate.template_name || selectedSmsTemplate.template_code} / {selectedSmsTemplate.template_code}
-              </p>
-            ) : (
-              <p style={{ color: 'var(--text-secondary)', marginTop: 8, fontSize: 12 }}>待保存配置：使用全局默认</p>
-            )}
-          </div>
+	          <div className="form-group">
+	            <label>短信服务</label>
+	            <select
+	              value={smsProviderRefIdInput}
+	              onChange={(event) => {
+	                setSmsProviderRefIdInput(event.target.value);
+	                setSmsSignatureRefIdInput('');
+	                setSmsTemplateRefIdInput('');
+	              }}
+	              disabled={!smsProviders.length}
+	            >
+	              <option value="">使用全局默认</option>
+	              {smsProviders.map((item) => (
+	                <option key={item.id} value={item.id}>
+	                  {item.name} ({item.provider_label || item.provider_type}){item.is_active ? '' : ' [INACTIVE]'}
+	                </option>
+	              ))}
+	            </select>
+	            <p style={{ color: 'var(--text-secondary)', marginTop: 8, fontSize: 12 }}>
+	              待保存配置：{selectedSmsProvider ? `${selectedSmsProvider.name} / ${selectedSmsProvider.provider_type}` : '使用全局默认'}
+	            </p>
+	          </div>
+
+	          <div className="form-group">
+	            <label>短信签名</label>
+	            <select
+	              value={smsSignatureRefIdInput}
+	              onChange={(event) => setSmsSignatureRefIdInput(event.target.value)}
+	              disabled={!filteredSmsSignatures.length}
+	            >
+	              <option value="">使用服务默认</option>
+	              {filteredSmsSignatures.map((item) => (
+	                <option key={item.id} value={item.id}>
+	                  {item.sign_name}{item.is_active ? '' : ' [INACTIVE]'}
+	                </option>
+	              ))}
+	            </select>
+	            <p style={{ color: 'var(--text-secondary)', marginTop: 8, fontSize: 12 }}>
+	              待保存配置：{selectedSmsSignature ? selectedSmsSignature.sign_name : '使用服务默认'}
+	            </p>
+	          </div>
+
+	          <div className="form-group">
+	            <label>验证码模板</label>
+	            <select
+	              value={smsTemplateRefIdInput}
+	              onChange={(event) => setSmsTemplateRefIdInput(event.target.value)}
+	              disabled={!filteredSmsTemplates.length}
+	            >
+	              <option value="">使用服务默认</option>
+	              {filteredSmsTemplates.map((item) => (
+	                <option key={item.id} value={item.id}>
+	                  {item.template_name || item.template_code} ({item.template_code}){item.is_active ? '' : ' [INACTIVE]'}
+	                </option>
+	              ))}
+	            </select>
+	            {selectedSmsTemplate ? (
+	              <p style={{ color: 'var(--text-secondary)', marginTop: 8, fontSize: 12 }}>
+	                待保存配置：{selectedSmsTemplate.template_name || selectedSmsTemplate.template_code} / {selectedSmsTemplate.template_code}
+	              </p>
+	            ) : (
+	              <p style={{ color: 'var(--text-secondary)', marginTop: 8, fontSize: 12 }}>待保存配置：使用服务默认</p>
+	            )}
+	          </div>
           <div className="platform-form-actions platform-form-span-2">
             <button className="btn" type="button" disabled={wechatSettingsSaving} onClick={saveWechatLoginSettings}>
               {wechatSettingsSaving ? '保存中...' : '保存登录配置'}
@@ -2951,14 +3077,22 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
                 : '平台默认'}
             </strong>
           </div>
-          <div className="platform-detail-row">
-            <span>当前验证码模板</span>
-            <strong>
-              {savedSmsTemplate
-                ? `${savedSmsTemplate.template_name || savedSmsTemplate.template_code} (${savedSmsTemplate.template_code})`
-                : '全局默认'}
-            </strong>
-          </div>
+	          <div className="platform-detail-row">
+	            <span>当前短信服务</span>
+	            <strong>{savedSmsProvider ? `${savedSmsProvider.name} (${savedSmsProvider.provider_type})` : '平台默认'}</strong>
+	          </div>
+	          <div className="platform-detail-row">
+	            <span>当前短信签名</span>
+	            <strong>{savedSmsSignature ? savedSmsSignature.sign_name : '服务默认'}</strong>
+	          </div>
+	          <div className="platform-detail-row">
+	            <span>当前验证码模板</span>
+	            <strong>
+	              {savedSmsTemplate
+	                ? `${savedSmsTemplate.template_name || savedSmsTemplate.template_code} (${savedSmsTemplate.template_code})`
+	                : '服务默认'}
+	            </strong>
+	          </div>
           {selectedSmsTemplateVariables ? (
             <div className="platform-detail-row">
               <span>待保存模板变量示例</span>
@@ -2992,10 +3126,10 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
               <strong>{smsTemplatesError}</strong>
             </div>
           ) : (
-            <div className="platform-detail-row">
-              <span>模板池可选数量</span>
-              <strong>{smsTemplates.length}</strong>
-            </div>
+	            <div className="platform-detail-row">
+	              <span>短信池可选数量</span>
+	              <strong>{smsProviders.length} / {smsSignatures.length} / {smsTemplates.length}</strong>
+	            </div>
           )}
         </div>
 
@@ -3070,7 +3204,14 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
   const renderDevelopers = () => {
     const appSlug = resolveDeveloperAppSlug();
     const apiBaseUrl = sdkManifest?.app?.api_base_url || (runtimeContext.apiBaseUrl ? `${runtimeContext.apiBaseUrl.replace(/\/+$/, '')}/${appSlug}/v1` : '');
-    const installCommand = sdkManifest?.codex?.install_command || `npx -y @opg/cli codex install --base-url ${runtimeContext.apiBaseUrl} --app ${appSlug}`;
+    const installCommand = sdkManifest?.codex?.install_command || `npx -y opg-dev-cli codex install --base-url ${runtimeContext.apiBaseUrl} --app ${appSlug}`;
+    const databaseSlug = appSlug.toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '').replace(/_+/g, '_');
+    const databaseNamespace = `app_${databaseSlug && /^[a-z_]/.test(databaseSlug) ? databaseSlug : `app_${databaseSlug || 'default'}`}__`;
+    const databaseCommands = [
+      'opg db smoke',
+      `opg db query --sql "SELECT * FROM ${databaseNamespace}customers"`,
+      `opg db execute --sql "CREATE TABLE ${databaseNamespace}customers (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), email text NOT NULL, created_at timestamptz NOT NULL DEFAULT now())" --dry-run true`,
+    ].join('\n');
     const envText = [
       `OPG_BASE_URL=${runtimeContext.apiBaseUrl || ''}`,
       `OPG_APP_SLUG=${appSlug}`,
@@ -3109,11 +3250,11 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
             <button className="btn btn-secondary btn-sm" type="button" onClick={() => void copyDeveloperText(envText, '环境变量')}>
               复制 env
             </button>
-            <button className="btn btn-secondary btn-sm" type="button" onClick={() => void copyDeveloperText('npm install @opg/sdk', '安装命令')}>
+            <button className="btn btn-secondary btn-sm" type="button" onClick={() => void copyDeveloperText('npm install opg-sdk', '安装命令')}>
               复制 SDK 安装
             </button>
           </div>
-          <pre className="platform-code-block">{`import { createOpgClient } from '@opg/sdk';
+          <pre className="platform-code-block">{`import { createOpgClient } from 'opg-sdk';
 
 const opg = createOpgClient({
   baseUrl: process.env.OPG_BASE_URL!,
@@ -3136,11 +3277,21 @@ const agents = await opg.agents.list();`}</pre>
             <table className="table">
               <tbody>
                 <tr><td>MCP command</td><td>{sdkManifest?.codex?.mcp_server_command || 'npx'}</td></tr>
-                <tr><td>MCP args</td><td>{(sdkManifest?.codex?.mcp_server_args || ['-y', '@opg/cli', 'mcp']).join(' ')}</td></tr>
+                <tr><td>MCP args</td><td>{(sdkManifest?.codex?.mcp_server_args || ['-y', 'opg-dev-cli', 'mcp']).join(' ')}</td></tr>
                 <tr><td>环境变量</td><td>{(sdkManifest?.codex?.environment || ['OPG_BASE_URL', 'OPG_APP_SLUG', 'OPG_API_KEY']).join(', ')}</td></tr>
               </tbody>
             </table>
           </div>
+        </section>
+
+        <section className="card">
+          <div className="platform-section-head">
+            <h3>数据库</h3>
+            <button className="btn btn-secondary btn-sm" type="button" onClick={() => void copyDeveloperText(databaseCommands, '数据库命令')}>
+              复制
+            </button>
+          </div>
+          <pre className="platform-code-block">{databaseCommands}</pre>
         </section>
 
         <section className="card">
@@ -3527,6 +3678,59 @@ const agents = await opg.agents.list();`}</pre>
       <section className="card">
         <div className="platform-section-head">
           <h3>AI 模型</h3>
+          <span className="status-tag info">{visibleModelCount}/{modelRoutes.length} 展示</span>
+        </div>
+        <div className="table-wrap">
+          <table className="platform-table">
+            <thead>
+              <tr>
+                <th>模型</th>
+                <th>能力</th>
+                <th>来源</th>
+                <th>状态</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {modelRoutes.map((route) => {
+                const appVisible = route.app_visibility?.is_visible !== false;
+                const globalVisible = route.app_visibility?.global_is_visible !== false;
+                const effectiveVisible = route.app_visibility?.effective_is_visible !== false;
+                const saving = modelVisibilitySaving === route.model_id;
+                return (
+                  <tr key={route.model_id}>
+                    <td>
+                      <strong>{route.model.display_name || route.model.model_key}</strong>
+                      <div className="muted">{route.model.model_key}</div>
+                    </td>
+                    <td>{route.model.capability}</td>
+                    <td>{route.effective_source?.name || route.default_source.name}</td>
+                    <td>
+                      <span className={`status-tag ${effectiveVisible ? 'success' : 'muted'}`}>
+                        {effectiveVisible ? '展示' : '隐藏'}
+                      </span>
+                      {!globalVisible && <span className="status-tag warning">全局隐藏</span>}
+                    </td>
+                    <td>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        type="button"
+                        disabled={saving || !globalVisible}
+                        onClick={() => toggleModelVisibility(route)}
+                      >
+                        {saving ? '保存中...' : appVisible ? '隐藏' : '展示'}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {!modelRoutes.length && (
+                <tr>
+                  <td colSpan={5} className="empty-cell">暂无模型</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </section>
 
@@ -3589,6 +3793,7 @@ const agents = await opg.agents.list();`}</pre>
                 const options = modelRoutes.filter(
                   (route) =>
                     route.model.is_active
+                    && route.app_visibility?.effective_is_visible !== false
                     && slot.capabilities.includes(route.model.capability)
                     && !(slot.key === 'tts' && isVoiceCloneApiType(route.model.api_type)),
                 );

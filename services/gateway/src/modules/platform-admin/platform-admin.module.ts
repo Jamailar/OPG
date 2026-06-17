@@ -21,9 +21,10 @@ import { PlatformAdminAiDebugJwtAuthGuard } from './guards/platform-admin-ai-deb
 import { PlatformAdminAccessGuard } from '../../common/guards/platform-admin-access.guard';
 import { FeedbackAdminApiKeyGuard } from '../../common/guards/feedback-admin-api-key.guard';
 import { RuntimeSettingsModule } from '../runtime-settings/runtime-settings.module';
+import { SmsModule } from '../sms/sms.module';
 
 @Module({
-  imports: [AiChatModule, RedeemModule, BehaviorAnalyticsModule, FeedbackModule, PaymentsModule, AuthModule, TenantSiteModule, EmailDeliveryModule, OutboundProxyModule, RuntimeSettingsModule],
+  imports: [AiChatModule, RedeemModule, BehaviorAnalyticsModule, FeedbackModule, PaymentsModule, AuthModule, TenantSiteModule, EmailDeliveryModule, OutboundProxyModule, RuntimeSettingsModule, SmsModule],
   controllers: [PlatformAdminController, FeedbackAdminApiController],
   providers: [
     PlatformAdminService,

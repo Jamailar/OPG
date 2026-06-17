@@ -512,8 +512,14 @@ export class PlatformAdminController {
     return this.platformAdminService.runPlatformPaymentFullFlowTest(req.user.id, body || {});
   }
 
+  @Get('sms/provider-catalog')
+  @ApiOperation({ summary: '平台短信供应商类型目录' })
+  async listSmsProviderCatalog(@Req() req: any) {
+    return this.platformAdminService.listSmsProviderCatalog(req.user.id);
+  }
+
   @Get('sms/providers')
-  @ApiOperation({ summary: '平台短信服务配置列表（通用API/阿里云）' })
+  @ApiOperation({ summary: '平台短信服务配置列表' })
   async listGlobalSmsProviders(@Req() req: any) {
     return this.platformAdminService.listGlobalSmsProviders(req.user.id);
   }
@@ -588,6 +594,18 @@ export class PlatformAdminController {
   @ApiOperation({ summary: '删除平台短信模板' })
   async deleteGlobalSmsTemplate(@Req() req: any, @Param('template_id') templateId: string) {
     return this.platformAdminService.deleteGlobalSmsTemplate(templateId, req.user.id);
+  }
+
+  @Get('sms/events')
+  @ApiOperation({ summary: '平台短信发送与配置审计事件' })
+  async listSmsMessageEvents(@Req() req: any, @Query() query: any) {
+    return this.platformAdminService.listSmsMessageEvents(req.user.id, query || {});
+  }
+
+  @Get('sms/summary')
+  @ApiOperation({ summary: '平台短信可观测汇总' })
+  async getSmsObservabilitySummary(@Req() req: any, @Query() query: any) {
+    return this.platformAdminService.getSmsObservabilitySummary(req.user.id, query || {});
   }
 
   @Get('apps/:app_id')

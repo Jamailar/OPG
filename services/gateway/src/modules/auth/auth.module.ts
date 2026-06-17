@@ -15,6 +15,7 @@ import { RedeemModule } from '../redeem/redeem.module';
 import { EmailDeliveryModule } from '../email-delivery/email-delivery.module';
 import { OutboundProxyModule } from '../outbound-proxy/outbound-proxy.module';
 import { RuntimeSettingsModule } from '../runtime-settings/runtime-settings.module';
+import { SmsModule } from '../sms/sms.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { RuntimeSettingsModule } from '../runtime-settings/runtime-settings.modu
     EmailDeliveryModule,
     OutboundProxyModule,
     RuntimeSettingsModule,
+    SmsModule,
     JwtModule.registerAsync({
       inject: [configuration.KEY],
       useFactory: (config: ConfigType<typeof configuration>) => ({

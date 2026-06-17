@@ -1,6 +1,6 @@
 # 模块文档目录
 
-最后更新：2026-06-10
+最后更新：2026-06-17
 
 ## 模块索引
 | 模块 | Controller 数 | Service 数 | 路由数（自动扫描） |
@@ -18,6 +18,7 @@
 | [`payments`](./payments/README.md) | 1 | 2 | 34 |
 | [`platform-admin`](./platform-admin/README.md) | 2 | 6 | 172 |
 | [`redeem`](./redeem/README.md) | 1 | 1 | 1 |
+| [`sms`](./sms/README.md) | 0 | 1 | 0 |
 | [`tenant-site`](./tenant-site/README.md) | 1 | 1 | 6 |
 | [`upload`](./upload/README.md) | 1 | 1 | 6 |
 | [`users`](./users/README.md) | 1 | 1 | 52 |

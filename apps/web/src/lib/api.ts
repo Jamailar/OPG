@@ -1068,7 +1068,17 @@ export interface PlatformSmtpProviderInput {
   notes?: string;
 }
 
-export type PlatformSmsProviderType = 'GENERIC_API' | 'ALIYUN_SMS';
+export type PlatformSmsProviderType =
+  | 'GENERIC_API'
+  | 'ALIYUN_SMS'
+  | 'TENCENT_SMS'
+  | 'HUAWEI_SMS'
+  | 'VOLCENGINE_SMS'
+  | 'TWILIO_SMS'
+  | 'VONAGE_SMS'
+  | 'MESSAGEBIRD_SMS'
+  | 'PLIVO_SMS'
+  | 'AWS_SNS';
 
 export interface PlatformSmsProviderConfig {
   enabled?: boolean;
@@ -1089,17 +1099,37 @@ export interface PlatformSmsProviderConfig {
   region_id?: string;
   access_key_id?: string;
   access_key_secret?: string;
+  secret_id?: string;
+  secret_key?: string;
+  sdk_app_id?: string;
+  app_key?: string;
+  app_secret?: string;
+  sender?: string;
+  sms_account?: string;
+  account_sid?: string;
+  from?: string;
+  messaging_service_sid?: string;
+  api_secret?: string;
+  access_key?: string;
+  originator?: string;
+  auth_id?: string;
+  src?: string;
+  secret_access_key?: string;
+  sender_id?: string;
+  status_callback?: string;
   has_auth_token?: boolean;
   auth_token_masked?: string;
   has_api_key?: boolean;
   api_key_masked?: string;
   has_access_key_secret?: boolean;
   access_key_secret_masked?: string;
+  [key: string]: unknown;
 }
 
 export interface PlatformSmsProviderItem {
   id: string;
   provider_type: PlatformSmsProviderType;
+  provider_label?: string;
   name: string;
   is_active: boolean;
   is_default: boolean;
@@ -1107,6 +1137,40 @@ export interface PlatformSmsProviderItem {
   config: PlatformSmsProviderConfig;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface PlatformSmsProviderCatalogItem {
+  provider_type: PlatformSmsProviderType;
+  label: string;
+  region: 'CN' | 'GLOBAL' | string;
+  mode_default: 'SYNC' | 'ASYNC' | string;
+  required_config: string[];
+  optional_config: string[];
+}
+
+export interface PlatformSmsEventItem {
+  id: string;
+  trace_id: string;
+  app_id?: string | null;
+  purpose: string;
+  provider_id?: string | null;
+  provider_type: string;
+  provider_name?: string | null;
+  signature_id?: string | null;
+  signature_name?: string | null;
+  template_id?: string | null;
+  template_code?: string | null;
+  dispatch_mode: string;
+  phone_masked?: string | null;
+  status: string;
+  status_code?: number | null;
+  response_code?: string | null;
+  response_message?: string | null;
+  provider_message_id?: string | null;
+  duration_ms: number;
+  error_json?: Record<string, unknown> | null;
+  response_json?: Record<string, unknown> | string | null;
+  created_at: string;
 }
 
 export interface PlatformSmsSignatureItem {
@@ -2806,6 +2870,11 @@ export const platformApi = {
     return response.data;
   },
 
+  listSmsProviderCatalog: async () => {
+    const response = await apiClient.getClient().get('/platform-admin/sms/provider-catalog');
+    return response.data;
+  },
+
   createGlobalSmsProvider: async (payload: {
     provider_type: PlatformSmsProviderType;
     name: string;
@@ -2920,6 +2989,25 @@ export const platformApi = {
 
   deleteGlobalSmsTemplate: async (templateId: string) => {
     const response = await apiClient.getClient().delete(`/platform-admin/sms/templates/${templateId}`);
+    return response.data;
+  },
+
+  listSmsEvents: async (params?: {
+    app_id?: string;
+    provider_id?: string;
+    provider_type?: string;
+    status?: string;
+    trace_id?: string;
+    phone?: string;
+    page?: number;
+    page_size?: number;
+  }) => {
+    const response = await apiClient.getClient().get('/platform-admin/sms/events', { params });
+    return response.data;
+  },
+
+  getSmsSummary: async (params?: { app_id?: string; hours?: number }) => {
+    const response = await apiClient.getClient().get('/platform-admin/sms/summary', { params });
     return response.data;
   },
 

@@ -98,6 +98,7 @@
 | POST | `payments/testing/wechat/one-time` | `runPlatformPaymentWechatOneTimeTest()` |
 | POST | `payments/testing/recurring` | `runPlatformPaymentRecurringTest()` |
 | POST | `payments/testing/full-flow` | `runPlatformPaymentFullFlowTest()` |
+| GET | `sms/provider-catalog` | `listSmsProviderCatalog()` |
 | GET | `sms/providers` | `listGlobalSmsProviders()` |
 | POST | `sms/providers` | `createGlobalSmsProvider()` |
 | PUT | `sms/providers/:provider_id` | `updateGlobalSmsProvider()` |
@@ -111,6 +112,8 @@
 | POST | `sms/templates` | `createGlobalSmsTemplate()` |
 | PUT | `sms/templates/:template_id` | `updateGlobalSmsTemplate()` |
 | DELETE | `sms/templates/:template_id` | `deleteGlobalSmsTemplate()` |
+| GET | `sms/events` | `listSmsMessageEvents()` |
+| GET | `sms/summary` | `getSmsObservabilitySummary()` |
 | GET | `apps/:app_id` | `getApp()` |
 | POST | `apps` | `createApp()` |
 | PUT | `apps/:app_id` | `updateApp()` |
@@ -231,12 +234,22 @@
 - `listGlobalPaymentMethods()`
 - `deleteGlobalPaymentMethod()`
 - `testGlobalPaymentMethod()`
+- `listSmsProviderCatalog()`
 - `listGlobalSmsProviders()`
+- `createGlobalSmsProvider()`
+- `updateGlobalSmsProvider()`
 - `deleteGlobalSmsProvider()`
+- `testGlobalSmsProvider()`
 - `listGlobalSmsSignatures()`
+- `createGlobalSmsSignature()`
+- `updateGlobalSmsSignature()`
 - `deleteGlobalSmsSignature()`
 - `listGlobalSmsTemplates()`
+- `createGlobalSmsTemplate()`
+- `updateGlobalSmsTemplate()`
 - `deleteGlobalSmsTemplate()`
+- `listSmsMessageEvents()`
+- `getSmsObservabilitySummary()`
 - `listAppPaymentProductsForTest()`
 - `getAppDetail()`
 - `createApp()`
@@ -321,32 +334,21 @@
 - `ensureGoogleOAuthClientSchema()`
 - `ensureGitHubOAuthAppSchema()`
 - `ensurePaymentMethodSchema()`
-- `ensureSmsProviderSchema()`
 - `initializeWechatOpenAppSchema()`
 - `initializeGoogleOAuthClientSchema()`
 - `initializeGitHubOAuthAppSchema()`
 - `initializePaymentMethodSchema()`
-- `initializeSmsProviderSchema()`
 - `getWechatOpenAppRow()`
 - `getGoogleOAuthClientRow()`
 - `getGitHubOAuthAppRow()`
 - `getPaymentMethodRow()`
-- `getSmsProviderRow()`
-- `getSmsSignatureRow()`
-- `getSmsTemplateRow()`
 - `getAppleLoginCredentialRow()`
 - `normalizeAppleLoginCredentialPayload()`
 - `serializeAppleLoginCredential()`
 - `normalizePaymentProviderType()`
-- `normalizeSmsProviderType()`
 - `normalizePaymentMethodConfig()`
-- `normalizeSmsProviderConfig()`
 - `assertPaymentMethodConfig()`
-- `assertSmsProviderConfig()`
 - `serializePaymentMethod()`
-- `serializeSmsProvider()`
-- `serializeSmsSignature()`
-- `serializeSmsTemplate()`
 - `parseBooleanLike()`
 - `normalizeOptionalUuid()`
 - `ensureOutboundProxyExists()`

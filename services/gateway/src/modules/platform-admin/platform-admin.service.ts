@@ -25,6 +25,7 @@ import { RedeemService, RedeemGrantInput } from '../redeem/redeem.service';
 import { AuthService } from '../auth/auth.service';
 import { TenantSiteService } from '../tenant-site/tenant-site.service';
 import { OutboundHttpClientService } from '../outbound-proxy/outbound-http-client.service';
+import { SmsService } from '../sms/sms.service';
 import { PlatformAppAnalyticsService } from './platform-app-analytics.service';
 import { clearAppSlugAliasCache } from '../../common/middleware/app-slug-alias.middleware';
 import {
@@ -152,51 +153,6 @@ type PlatformPaymentMethodRow = {
   is_default: boolean;
   config_json: unknown;
   notes: string | null;
-  created_by_user_id: string | null;
-  updated_by_user_id: string | null;
-  created_at: Date;
-  updated_at: Date;
-};
-
-type PlatformSmsProviderType = 'GENERIC_API' | 'ALIYUN_SMS';
-
-type PlatformSmsProviderRow = {
-  id: string;
-  provider_type: PlatformSmsProviderType;
-  name: string;
-  is_active: boolean;
-  is_default: boolean;
-  config_json: unknown;
-  notes: string | null;
-  created_by_user_id: string | null;
-  updated_by_user_id: string | null;
-  created_at: Date;
-  updated_at: Date;
-};
-
-type PlatformSmsSignatureRow = {
-  id: string;
-  provider_id: string;
-  sign_name: string;
-  is_active: boolean;
-  is_default: boolean;
-  notes: string | null;
-  meta_json: unknown;
-  created_by_user_id: string | null;
-  updated_by_user_id: string | null;
-  created_at: Date;
-  updated_at: Date;
-};
-
-type PlatformSmsTemplateRow = {
-  id: string;
-  provider_id: string;
-  template_code: string;
-  template_name: string | null;
-  is_active: boolean;
-  is_default: boolean;
-  notes: string | null;
-  meta_json: unknown;
   created_by_user_id: string | null;
   updated_by_user_id: string | null;
   created_at: Date;
@@ -458,7 +414,6 @@ export class PlatformAdminService implements OnModuleInit {
   private googleOAuthClientSchemaEnsured: Promise<void> | null = null;
   private githubOAuthAppSchemaEnsured: Promise<void> | null = null;
   private paymentMethodSchemaEnsured: Promise<void> | null = null;
-  private smsProviderSchemaEnsured: Promise<void> | null = null;
 
   constructor(
     @Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient,
@@ -474,6 +429,7 @@ export class PlatformAdminService implements OnModuleInit {
     private readonly platformAppAnalyticsService: PlatformAppAnalyticsService,
     private readonly tenantSiteService: TenantSiteService,
     private readonly outboundHttpClient: OutboundHttpClientService,
+    private readonly smsService: SmsService,
   ) {}
 
   async onModuleInit() {
@@ -482,7 +438,6 @@ export class PlatformAdminService implements OnModuleInit {
       this.ensureGoogleOAuthClientSchema(),
       this.ensureGitHubOAuthAppSchema(),
       this.ensurePaymentMethodSchema(),
-      this.ensureSmsProviderSchema(),
     ]);
   }
 
@@ -1441,16 +1396,7 @@ export class PlatformAdminService implements OnModuleInit {
 
   async listGlobalSmsProviders(actorUserId: string) {
     await this.ensureAdminUser(actorUserId);
-    await this.ensureSmsProviderSchema();
-
-    const rows = await (this.prisma.$queryRawUnsafe(
-      `SELECT *
-       FROM platform_sms_providers
-       ORDER BY is_default DESC, is_active DESC, updated_at DESC, created_at DESC`,
-    ) as Promise<PlatformSmsProviderRow[]>);
-    return {
-      items: rows.map((row) => this.serializeSmsProvider(row)),
-    };
+    return this.smsService.listProviders();
   }
 
   async createGlobalSmsProvider(
@@ -1465,54 +1411,7 @@ export class PlatformAdminService implements OnModuleInit {
     },
   ) {
     await this.ensureAdminUser(actorUserId);
-    await this.ensureSmsProviderSchema();
-
-    const providerType = this.normalizeSmsProviderType(payload.provider_type);
-    const name = String(payload.name || '').trim();
-    if (!name) {
-      throw new BadRequestException('name is required');
-    }
-    const configJson = this.normalizeSmsProviderConfig(providerType, payload.config || {});
-    this.assertSmsProviderConfig(providerType, configJson);
-    const isActive = payload.is_active !== false;
-    const isDefault = !!payload.is_default;
-    const notes = String(payload.notes || '').trim() || null;
-
-    const dupRows = await (this.prisma.$queryRawUnsafe(
-      `SELECT id
-       FROM platform_sms_providers
-       WHERE LOWER(name) = LOWER($1)
-       LIMIT 1`,
-      name,
-    ) as Promise<Array<{ id: string }>>);
-    if (dupRows.length > 0) {
-      throw new BadRequestException('短信服务名称已存在');
-    }
-
-    if (isDefault) {
-      await this.prisma.$executeRawUnsafe(
-        `UPDATE platform_sms_providers
-         SET is_default = false, updated_at = now()`,
-      );
-    }
-
-    const rows = await (this.prisma.$queryRawUnsafe(
-      `INSERT INTO platform_sms_providers (
-         id, provider_type, name, is_active, is_default, config_json, notes, created_by_user_id, updated_by_user_id
-       ) VALUES (
-         gen_random_uuid(), $1, $2, $3, $4, $5::jsonb, $6, $7::uuid, $7::uuid
-       )
-       RETURNING *`,
-      providerType,
-      name,
-      isActive,
-      isDefault,
-      JSON.stringify(configJson),
-      notes,
-      actorUserId,
-    ) as Promise<PlatformSmsProviderRow[]>);
-
-    return this.serializeSmsProvider(rows[0]);
+    return this.smsService.createProvider(actorUserId, payload);
   }
 
   async updateGlobalSmsProvider(
@@ -1528,98 +1427,12 @@ export class PlatformAdminService implements OnModuleInit {
     },
   ) {
     await this.ensureAdminUser(actorUserId);
-    await this.ensureSmsProviderSchema();
-
-    const existing = await this.getSmsProviderRow(providerId);
-    const providerType = this.normalizeSmsProviderType(payload.provider_type || existing.provider_type);
-    const name = payload.name === undefined ? existing.name : String(payload.name || '').trim();
-    if (!name) {
-      throw new BadRequestException('name is required');
-    }
-    const isActive = payload.is_active === undefined ? existing.is_active : !!payload.is_active;
-    const isDefault = payload.is_default === undefined ? existing.is_default : !!payload.is_default;
-    const notes = payload.notes === undefined ? existing.notes : String(payload.notes || '').trim() || null;
-
-    const mergedConfig = this.normalizeSmsProviderConfig(providerType, {
-      ...asPlainObject(existing.config_json),
-      ...asPlainObject(payload.config),
-    });
-    this.assertSmsProviderConfig(providerType, mergedConfig);
-
-    const dupRows = await (this.prisma.$queryRawUnsafe(
-      `SELECT id
-       FROM platform_sms_providers
-       WHERE LOWER(name) = LOWER($1) AND id <> $2::uuid
-       LIMIT 1`,
-      name,
-      providerId,
-    ) as Promise<Array<{ id: string }>>);
-    if (dupRows.length > 0) {
-      throw new BadRequestException('短信服务名称已存在');
-    }
-
-    if (isDefault) {
-      await this.prisma.$executeRawUnsafe(
-        `UPDATE platform_sms_providers
-         SET is_default = false, updated_at = now()
-         WHERE id <> $1::uuid`,
-        providerId,
-      );
-    }
-
-    const rows = await (this.prisma.$queryRawUnsafe(
-      `UPDATE platform_sms_providers
-       SET provider_type = $2,
-           name = $3,
-           is_active = $4,
-           is_default = $5,
-           config_json = $6::jsonb,
-           notes = $7,
-           updated_by_user_id = $8::uuid,
-           updated_at = now()
-       WHERE id = $1::uuid
-       RETURNING *`,
-      providerId,
-      providerType,
-      name,
-      isActive,
-      isDefault,
-      JSON.stringify(mergedConfig),
-      notes,
-      actorUserId,
-    ) as Promise<PlatformSmsProviderRow[]>);
-
-    return this.serializeSmsProvider(rows[0]);
+    return this.smsService.updateProvider(providerId, actorUserId, payload);
   }
 
   async deleteGlobalSmsProvider(providerId: string, actorUserId: string) {
     await this.ensureAdminUser(actorUserId);
-    await this.ensureSmsProviderSchema();
-    await this.getSmsProviderRow(providerId);
-
-    const refs = await (this.prisma.$queryRawUnsafe(
-      `SELECT id
-       FROM platform_sms_signatures
-       WHERE provider_id = $1::uuid
-       LIMIT 1`,
-      providerId,
-    ) as Promise<Array<{ id: string }>>);
-    if (refs.length > 0) {
-      throw new BadRequestException('该短信服务下仍有关联签名，请先删除签名');
-    }
-    const templateRefs = await (this.prisma.$queryRawUnsafe(
-      `SELECT id
-       FROM platform_sms_templates
-       WHERE provider_id = $1::uuid
-       LIMIT 1`,
-      providerId,
-    ) as Promise<Array<{ id: string }>>);
-    if (templateRefs.length > 0) {
-      throw new BadRequestException('该短信服务下仍有关联模板，请先删除模板');
-    }
-
-    await this.prisma.$executeRawUnsafe(`DELETE FROM platform_sms_providers WHERE id = $1::uuid`, providerId);
-    return { success: true };
+    return this.smsService.deleteProvider(providerId, actorUserId);
   }
 
   async testGlobalSmsProvider(
@@ -1627,112 +1440,12 @@ export class PlatformAdminService implements OnModuleInit {
     payload: { provider_id?: string; timeout_ms?: number },
   ) {
     await this.ensureAdminUser(actorUserId);
-    await this.ensureSmsProviderSchema();
-
-    const providerId = String(payload.provider_id || '').trim();
-    if (!providerId) {
-      throw new BadRequestException('provider_id is required');
-    }
-    const provider = await this.getSmsProviderRow(providerId);
-    const cfg = asPlainObject(provider.config_json);
-    const timeoutMsRaw = Number(payload.timeout_ms ?? 10000);
-    const timeoutMs = Number.isFinite(timeoutMsRaw) ? Math.min(Math.max(Math.floor(timeoutMsRaw), 1000), 60000) : 10000;
-    const startedAt = Date.now();
-
-    if (provider.provider_type === 'GENERIC_API') {
-      const endpointUrl = String(cfg.endpoint_url || '').trim();
-      if (!endpointUrl) {
-        throw new BadRequestException('通用短信服务缺少 endpoint_url');
-      }
-      const method = String(cfg.http_method || 'POST').trim().toUpperCase();
-      let response: Response;
-      try {
-        response = await fetch(endpointUrl, {
-          method: method === 'GET' ? 'GET' : 'POST',
-          headers: method === 'GET' ? undefined : { 'Content-Type': 'application/json' },
-          body: method === 'GET' ? undefined : JSON.stringify({ dry_run: true }),
-          signal: AbortSignal.timeout(timeoutMs),
-        });
-      } catch (error) {
-        return {
-          provider_id: provider.id,
-          provider_type: provider.provider_type,
-          provider_name: provider.name,
-          ok: false,
-          status_code: null,
-          elapsed_ms: Date.now() - startedAt,
-          test_url: endpointUrl,
-          error_message: this.describeNetworkFailure(error, timeoutMs),
-        };
-      }
-      return {
-        provider_id: provider.id,
-        provider_type: provider.provider_type,
-        provider_name: provider.name,
-        ok: response.ok || response.status === 400 || response.status === 401 || response.status === 403 || response.status === 405,
-        status_code: response.status,
-        elapsed_ms: Date.now() - startedAt,
-        test_url: endpointUrl,
-      };
-    }
-
-    const endpointUrl = String(cfg.endpoint_url || '').trim() || 'https://dysmsapi.aliyuncs.com/';
-    let response: Response;
-    try {
-      response = await fetch(endpointUrl, {
-        method: 'GET',
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-    } catch (error) {
-      return {
-        provider_id: provider.id,
-        provider_type: provider.provider_type,
-        provider_name: provider.name,
-        ok: false,
-        status_code: null,
-        elapsed_ms: Date.now() - startedAt,
-        test_url: endpointUrl,
-        error_message: this.describeNetworkFailure(error, timeoutMs),
-      };
-    }
-    return {
-      provider_id: provider.id,
-      provider_type: provider.provider_type,
-      provider_name: provider.name,
-      ok: response.ok || response.status === 400 || response.status === 401 || response.status === 403 || response.status === 405,
-      status_code: response.status,
-      elapsed_ms: Date.now() - startedAt,
-      test_url: endpointUrl,
-    };
+    return this.smsService.testProvider(payload);
   }
 
   async listGlobalSmsSignatures(actorUserId: string, query: { provider_id?: string }) {
     await this.ensureAdminUser(actorUserId);
-    await this.ensureSmsProviderSchema();
-
-    const providerId = String(query.provider_id || '').trim();
-    if (providerId) {
-      await this.getSmsProviderRow(providerId);
-      const rows = await (this.prisma.$queryRawUnsafe(
-        `SELECT *
-         FROM platform_sms_signatures
-         WHERE provider_id = $1::uuid
-         ORDER BY is_default DESC, is_active DESC, updated_at DESC, created_at DESC`,
-        providerId,
-      ) as Promise<PlatformSmsSignatureRow[]>);
-      return {
-        items: rows.map((row) => this.serializeSmsSignature(row)),
-      };
-    }
-
-    const rows = await (this.prisma.$queryRawUnsafe(
-      `SELECT *
-       FROM platform_sms_signatures
-       ORDER BY updated_at DESC, created_at DESC`,
-    ) as Promise<PlatformSmsSignatureRow[]>);
-    return {
-      items: rows.map((row) => this.serializeSmsSignature(row)),
-    };
+    return this.smsService.listSignatures(query);
   }
 
   async createGlobalSmsSignature(
@@ -1748,61 +1461,7 @@ export class PlatformAdminService implements OnModuleInit {
     },
   ) {
     await this.ensureAdminUser(actorUserId);
-    await this.ensureSmsProviderSchema();
-
-    const providerId = String(payload.provider_id || '').trim();
-    if (!providerId) {
-      throw new BadRequestException('provider_id is required');
-    }
-    await this.getSmsProviderRow(providerId);
-
-    const signName = String(payload.sign_name || payload.name || '').trim();
-    if (!signName) {
-      throw new BadRequestException('sign_name is required');
-    }
-    const isActive = payload.is_active !== false;
-    const isDefault = !!payload.is_default;
-    const notes = String(payload.notes || '').trim() || null;
-    const metaJson = asPlainObject(payload.meta);
-
-    const dupRows = await (this.prisma.$queryRawUnsafe(
-      `SELECT id
-       FROM platform_sms_signatures
-       WHERE provider_id = $1::uuid AND LOWER(sign_name) = LOWER($2)
-       LIMIT 1`,
-      providerId,
-      signName,
-    ) as Promise<Array<{ id: string }>>);
-    if (dupRows.length > 0) {
-      throw new BadRequestException('该短信签名已存在');
-    }
-
-    if (isDefault) {
-      await this.prisma.$executeRawUnsafe(
-        `UPDATE platform_sms_signatures
-         SET is_default = false, updated_at = now()
-         WHERE provider_id = $1::uuid`,
-        providerId,
-      );
-    }
-
-    const rows = await (this.prisma.$queryRawUnsafe(
-      `INSERT INTO platform_sms_signatures (
-         id, provider_id, sign_name, is_active, is_default, notes, meta_json, created_by_user_id, updated_by_user_id
-       ) VALUES (
-         gen_random_uuid(), $1::uuid, $2, $3, $4, $5, $6::jsonb, $7::uuid, $7::uuid
-       )
-       RETURNING *`,
-      providerId,
-      signName,
-      isActive,
-      isDefault,
-      notes,
-      JSON.stringify(metaJson),
-      actorUserId,
-    ) as Promise<PlatformSmsSignatureRow[]>);
-
-    return this.serializeSmsSignature(rows[0]);
+    return this.smsService.createSignature(actorUserId, payload);
   }
 
   async updateGlobalSmsSignature(
@@ -1819,108 +1478,17 @@ export class PlatformAdminService implements OnModuleInit {
     },
   ) {
     await this.ensureAdminUser(actorUserId);
-    await this.ensureSmsProviderSchema();
-
-    const existing = await this.getSmsSignatureRow(signatureId);
-    const providerId = payload.provider_id === undefined ? existing.provider_id : String(payload.provider_id || '').trim();
-    if (!providerId) {
-      throw new BadRequestException('provider_id is required');
-    }
-    await this.getSmsProviderRow(providerId);
-
-    const signName = payload.sign_name === undefined && payload.name === undefined
-      ? existing.sign_name
-      : String(payload.sign_name || payload.name || '').trim();
-    if (!signName) {
-      throw new BadRequestException('sign_name is required');
-    }
-    const isActive = payload.is_active === undefined ? existing.is_active : !!payload.is_active;
-    const isDefault = payload.is_default === undefined ? existing.is_default : !!payload.is_default;
-    const notes = payload.notes === undefined ? existing.notes : String(payload.notes || '').trim() || null;
-    const metaJson = payload.meta === undefined ? asPlainObject(existing.meta_json) : asPlainObject(payload.meta);
-
-    const dupRows = await (this.prisma.$queryRawUnsafe(
-      `SELECT id
-       FROM platform_sms_signatures
-       WHERE provider_id = $1::uuid AND LOWER(sign_name) = LOWER($2) AND id <> $3::uuid
-       LIMIT 1`,
-      providerId,
-      signName,
-      signatureId,
-    ) as Promise<Array<{ id: string }>>);
-    if (dupRows.length > 0) {
-      throw new BadRequestException('该短信签名已存在');
-    }
-
-    if (isDefault) {
-      await this.prisma.$executeRawUnsafe(
-        `UPDATE platform_sms_signatures
-         SET is_default = false, updated_at = now()
-         WHERE provider_id = $1::uuid AND id <> $2::uuid`,
-        providerId,
-        signatureId,
-      );
-    }
-
-    const rows = await (this.prisma.$queryRawUnsafe(
-      `UPDATE platform_sms_signatures
-       SET provider_id = $2::uuid,
-           sign_name = $3,
-           is_active = $4,
-           is_default = $5,
-           notes = $6,
-           meta_json = $7::jsonb,
-           updated_by_user_id = $8::uuid,
-           updated_at = now()
-       WHERE id = $1::uuid
-       RETURNING *`,
-      signatureId,
-      providerId,
-      signName,
-      isActive,
-      isDefault,
-      notes,
-      JSON.stringify(metaJson),
-      actorUserId,
-    ) as Promise<PlatformSmsSignatureRow[]>);
-    return this.serializeSmsSignature(rows[0]);
+    return this.smsService.updateSignature(signatureId, actorUserId, payload);
   }
 
   async deleteGlobalSmsSignature(signatureId: string, actorUserId: string) {
     await this.ensureAdminUser(actorUserId);
-    await this.ensureSmsProviderSchema();
-    await this.getSmsSignatureRow(signatureId);
-    await this.prisma.$executeRawUnsafe(`DELETE FROM platform_sms_signatures WHERE id = $1::uuid`, signatureId);
-    return { success: true };
+    return this.smsService.deleteSignature(signatureId, actorUserId);
   }
 
   async listGlobalSmsTemplates(actorUserId: string, query: { provider_id?: string }) {
     await this.ensureAdminUser(actorUserId);
-    await this.ensureSmsProviderSchema();
-
-    const providerId = String(query.provider_id || '').trim();
-    if (providerId) {
-      await this.getSmsProviderRow(providerId);
-      const rows = await (this.prisma.$queryRawUnsafe(
-        `SELECT *
-         FROM platform_sms_templates
-         WHERE provider_id = $1::uuid
-         ORDER BY is_default DESC, is_active DESC, updated_at DESC, created_at DESC`,
-        providerId,
-      ) as Promise<PlatformSmsTemplateRow[]>);
-      return {
-        items: rows.map((row) => this.serializeSmsTemplate(row)),
-      };
-    }
-
-    const rows = await (this.prisma.$queryRawUnsafe(
-      `SELECT *
-       FROM platform_sms_templates
-       ORDER BY updated_at DESC, created_at DESC`,
-    ) as Promise<PlatformSmsTemplateRow[]>);
-    return {
-      items: rows.map((row) => this.serializeSmsTemplate(row)),
-    };
+    return this.smsService.listTemplates(query);
   }
 
   async createGlobalSmsTemplate(
@@ -1938,62 +1506,7 @@ export class PlatformAdminService implements OnModuleInit {
     },
   ) {
     await this.ensureAdminUser(actorUserId);
-    await this.ensureSmsProviderSchema();
-
-    const providerId = String(payload.provider_id || '').trim();
-    if (!providerId) {
-      throw new BadRequestException('provider_id is required');
-    }
-    await this.getSmsProviderRow(providerId);
-
-    const templateCode = String(payload.template_code || payload.code || '').trim();
-    if (!templateCode) {
-      throw new BadRequestException('template_code is required');
-    }
-    const templateName = String(payload.template_name || payload.name || '').trim() || null;
-    const isActive = payload.is_active !== false;
-    const isDefault = !!payload.is_default;
-    const notes = String(payload.notes || '').trim() || null;
-    const metaJson = asPlainObject(payload.meta);
-
-    const dupRows = await (this.prisma.$queryRawUnsafe(
-      `SELECT id
-       FROM platform_sms_templates
-       WHERE provider_id = $1::uuid AND LOWER(template_code) = LOWER($2)
-       LIMIT 1`,
-      providerId,
-      templateCode,
-    ) as Promise<Array<{ id: string }>>);
-    if (dupRows.length > 0) {
-      throw new BadRequestException('该短信模板已存在');
-    }
-
-    if (isDefault) {
-      await this.prisma.$executeRawUnsafe(
-        `UPDATE platform_sms_templates
-         SET is_default = false, updated_at = now()
-         WHERE provider_id = $1::uuid`,
-        providerId,
-      );
-    }
-
-    const rows = await (this.prisma.$queryRawUnsafe(
-      `INSERT INTO platform_sms_templates (
-         id, provider_id, template_code, template_name, is_active, is_default, notes, meta_json, created_by_user_id, updated_by_user_id
-       ) VALUES (
-         gen_random_uuid(), $1::uuid, $2, $3, $4, $5, $6, $7::jsonb, $8::uuid, $8::uuid
-       )
-       RETURNING *`,
-      providerId,
-      templateCode,
-      templateName,
-      isActive,
-      isDefault,
-      notes,
-      JSON.stringify(metaJson),
-      actorUserId,
-    ) as Promise<PlatformSmsTemplateRow[]>);
-    return this.serializeSmsTemplate(rows[0]);
+    return this.smsService.createTemplate(actorUserId, payload);
   }
 
   async updateGlobalSmsTemplate(
@@ -2012,84 +1525,12 @@ export class PlatformAdminService implements OnModuleInit {
     },
   ) {
     await this.ensureAdminUser(actorUserId);
-    await this.ensureSmsProviderSchema();
-
-    const existing = await this.getSmsTemplateRow(templateId);
-    const providerId = payload.provider_id === undefined ? existing.provider_id : String(payload.provider_id || '').trim();
-    if (!providerId) {
-      throw new BadRequestException('provider_id is required');
-    }
-    await this.getSmsProviderRow(providerId);
-
-    const templateCode = payload.template_code === undefined && payload.code === undefined
-      ? existing.template_code
-      : String(payload.template_code || payload.code || '').trim();
-    if (!templateCode) {
-      throw new BadRequestException('template_code is required');
-    }
-    const templateName = payload.template_name === undefined && payload.name === undefined
-      ? existing.template_name
-      : String(payload.template_name || payload.name || '').trim() || null;
-    const isActive = payload.is_active === undefined ? existing.is_active : !!payload.is_active;
-    const isDefault = payload.is_default === undefined ? existing.is_default : !!payload.is_default;
-    const notes = payload.notes === undefined ? existing.notes : String(payload.notes || '').trim() || null;
-    const metaJson = payload.meta === undefined ? asPlainObject(existing.meta_json) : asPlainObject(payload.meta);
-
-    const dupRows = await (this.prisma.$queryRawUnsafe(
-      `SELECT id
-       FROM platform_sms_templates
-       WHERE provider_id = $1::uuid AND LOWER(template_code) = LOWER($2) AND id <> $3::uuid
-       LIMIT 1`,
-      providerId,
-      templateCode,
-      templateId,
-    ) as Promise<Array<{ id: string }>>);
-    if (dupRows.length > 0) {
-      throw new BadRequestException('该短信模板已存在');
-    }
-
-    if (isDefault) {
-      await this.prisma.$executeRawUnsafe(
-        `UPDATE platform_sms_templates
-         SET is_default = false, updated_at = now()
-         WHERE provider_id = $1::uuid AND id <> $2::uuid`,
-        providerId,
-        templateId,
-      );
-    }
-
-    const rows = await (this.prisma.$queryRawUnsafe(
-      `UPDATE platform_sms_templates
-       SET provider_id = $2::uuid,
-           template_code = $3,
-           template_name = $4,
-           is_active = $5,
-           is_default = $6,
-           notes = $7,
-           meta_json = $8::jsonb,
-           updated_by_user_id = $9::uuid,
-           updated_at = now()
-       WHERE id = $1::uuid
-       RETURNING *`,
-      templateId,
-      providerId,
-      templateCode,
-      templateName,
-      isActive,
-      isDefault,
-      notes,
-      JSON.stringify(metaJson),
-      actorUserId,
-    ) as Promise<PlatformSmsTemplateRow[]>);
-    return this.serializeSmsTemplate(rows[0]);
+    return this.smsService.updateTemplate(templateId, actorUserId, payload);
   }
 
   async deleteGlobalSmsTemplate(templateId: string, actorUserId: string) {
     await this.ensureAdminUser(actorUserId);
-    await this.ensureSmsProviderSchema();
-    await this.getSmsTemplateRow(templateId);
-    await this.prisma.$executeRawUnsafe(`DELETE FROM platform_sms_templates WHERE id = $1::uuid`, templateId);
-    return { success: true };
+    return this.smsService.deleteTemplate(templateId, actorUserId);
   }
 
   async listAppPaymentProductsForTest(appId: string, actorUserId: string) {
@@ -2170,13 +1611,28 @@ export class PlatformAdminService implements OnModuleInit {
     if (!phone) {
       throw new BadRequestException('phone is required');
     }
-    return this.authService.sendSmsCodeForAppTest({
+    return this.smsService.sendSmsCodeForAppTest({
       app_id: app.id,
       phone,
       code: payload?.code,
       persist_code: payload?.persist_code === true,
       respect_cooldown: payload?.respect_cooldown === true,
     });
+  }
+
+  async listSmsProviderCatalog(actorUserId: string) {
+    await this.ensureAdminUser(actorUserId);
+    return this.smsService.getProviderCatalog();
+  }
+
+  async listSmsMessageEvents(actorUserId: string, query: any) {
+    await this.ensureAdminUser(actorUserId);
+    return this.smsService.listEvents(query || {});
+  }
+
+  async getSmsObservabilitySummary(actorUserId: string, query: any) {
+    await this.ensureAdminUser(actorUserId);
+    return this.smsService.getSummary(query || {});
   }
 
   async getAppDetail(appId: string) {
@@ -4441,16 +3897,6 @@ export class PlatformAdminService implements OnModuleInit {
     await this.paymentMethodSchemaEnsured;
   }
 
-  private async ensureSmsProviderSchema() {
-    if (!this.smsProviderSchemaEnsured) {
-      this.smsProviderSchemaEnsured = this.initializeSmsProviderSchema().catch((error) => {
-        this.smsProviderSchemaEnsured = null;
-        throw error;
-      });
-    }
-    await this.smsProviderSchemaEnsured;
-  }
-
   private async initializeWechatOpenAppSchema() {
     await this.prisma.$executeRawUnsafe(
       `CREATE TABLE IF NOT EXISTS wechat_open_apps (
@@ -4566,96 +4012,6 @@ export class PlatformAdminService implements OnModuleInit {
     );
   }
 
-  private async initializeSmsProviderSchema() {
-    await this.prisma.$executeRawUnsafe(
-      `CREATE TABLE IF NOT EXISTS platform_sms_providers (
-         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-         provider_type varchar(32) NOT NULL,
-         name varchar(128) NOT NULL,
-         is_active boolean NOT NULL DEFAULT true,
-         is_default boolean NOT NULL DEFAULT false,
-         config_json jsonb NOT NULL DEFAULT '{}'::jsonb,
-         notes text NULL,
-         created_by_user_id uuid NULL,
-         updated_by_user_id uuid NULL,
-         created_at timestamptz NOT NULL DEFAULT now(),
-         updated_at timestamptz NOT NULL DEFAULT now()
-       )`,
-    );
-    await this.prisma.$executeRawUnsafe(
-      `CREATE UNIQUE INDEX IF NOT EXISTS idx_platform_sms_providers_name_unique
-       ON platform_sms_providers(LOWER(name))`,
-    );
-    await this.prisma.$executeRawUnsafe(
-      `CREATE INDEX IF NOT EXISTS idx_platform_sms_providers_type
-       ON platform_sms_providers(provider_type, is_default DESC, is_active DESC, updated_at DESC)`,
-    );
-    await this.prisma.$executeRawUnsafe(
-      `CREATE UNIQUE INDEX IF NOT EXISTS idx_platform_sms_providers_default_unique
-       ON platform_sms_providers((is_default))
-       WHERE is_default = true`,
-    );
-
-    await this.prisma.$executeRawUnsafe(
-      `CREATE TABLE IF NOT EXISTS platform_sms_signatures (
-         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-         provider_id uuid NOT NULL,
-         sign_name varchar(96) NOT NULL,
-         is_active boolean NOT NULL DEFAULT true,
-         is_default boolean NOT NULL DEFAULT false,
-         notes text NULL,
-         meta_json jsonb NOT NULL DEFAULT '{}'::jsonb,
-         created_by_user_id uuid NULL,
-         updated_by_user_id uuid NULL,
-         created_at timestamptz NOT NULL DEFAULT now(),
-         updated_at timestamptz NOT NULL DEFAULT now()
-       )`,
-    );
-    await this.prisma.$executeRawUnsafe(
-      `CREATE UNIQUE INDEX IF NOT EXISTS idx_platform_sms_signatures_name_unique
-       ON platform_sms_signatures(provider_id, LOWER(sign_name))`,
-    );
-    await this.prisma.$executeRawUnsafe(
-      `CREATE INDEX IF NOT EXISTS idx_platform_sms_signatures_provider
-       ON platform_sms_signatures(provider_id, is_default DESC, is_active DESC, updated_at DESC)`,
-    );
-    await this.prisma.$executeRawUnsafe(
-      `CREATE UNIQUE INDEX IF NOT EXISTS idx_platform_sms_signatures_default_unique
-       ON platform_sms_signatures(provider_id)
-       WHERE is_default = true`,
-    );
-
-    await this.prisma.$executeRawUnsafe(
-      `CREATE TABLE IF NOT EXISTS platform_sms_templates (
-         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-         provider_id uuid NOT NULL,
-         template_code varchar(128) NOT NULL,
-         template_name varchar(128) NULL,
-         is_active boolean NOT NULL DEFAULT true,
-         is_default boolean NOT NULL DEFAULT false,
-         notes text NULL,
-         meta_json jsonb NOT NULL DEFAULT '{}'::jsonb,
-         created_by_user_id uuid NULL,
-         updated_by_user_id uuid NULL,
-         created_at timestamptz NOT NULL DEFAULT now(),
-         updated_at timestamptz NOT NULL DEFAULT now()
-       )`,
-    );
-    await this.prisma.$executeRawUnsafe(
-      `CREATE UNIQUE INDEX IF NOT EXISTS idx_platform_sms_templates_code_unique
-       ON platform_sms_templates(provider_id, LOWER(template_code))`,
-    );
-    await this.prisma.$executeRawUnsafe(
-      `CREATE INDEX IF NOT EXISTS idx_platform_sms_templates_provider
-       ON platform_sms_templates(provider_id, is_default DESC, is_active DESC, updated_at DESC)`,
-    );
-    await this.prisma.$executeRawUnsafe(
-      `CREATE UNIQUE INDEX IF NOT EXISTS idx_platform_sms_templates_default_unique
-       ON platform_sms_templates(provider_id)
-       WHERE is_default = true`,
-    );
-  }
-
   private async getWechatOpenAppRow(openAppId: string) {
     const rows = await (this.prisma.$queryRawUnsafe(
       `SELECT *
@@ -4724,51 +4080,6 @@ export class PlatformAdminService implements OnModuleInit {
     return row;
   }
 
-  private async getSmsProviderRow(providerId: string) {
-    const rows = await (this.prisma.$queryRawUnsafe(
-      `SELECT *
-       FROM platform_sms_providers
-       WHERE id = $1::uuid
-       LIMIT 1`,
-      providerId,
-    ) as Promise<PlatformSmsProviderRow[]>);
-    const row = rows[0];
-    if (!row) {
-      throw new NotFoundException('sms provider not found');
-    }
-    return row;
-  }
-
-  private async getSmsSignatureRow(signatureId: string) {
-    const rows = await (this.prisma.$queryRawUnsafe(
-      `SELECT *
-       FROM platform_sms_signatures
-       WHERE id = $1::uuid
-       LIMIT 1`,
-      signatureId,
-    ) as Promise<PlatformSmsSignatureRow[]>);
-    const row = rows[0];
-    if (!row) {
-      throw new NotFoundException('sms signature not found');
-    }
-    return row;
-  }
-
-  private async getSmsTemplateRow(templateId: string) {
-    const rows = await (this.prisma.$queryRawUnsafe(
-      `SELECT *
-       FROM platform_sms_templates
-       WHERE id = $1::uuid
-       LIMIT 1`,
-      templateId,
-    ) as Promise<PlatformSmsTemplateRow[]>);
-    const row = rows[0];
-    if (!row) {
-      throw new NotFoundException('sms template not found');
-    }
-    return row;
-  }
-
   private async getAppleLoginCredentialRow(credentialId: string) {
     const rows = await (this.prisma.$queryRawUnsafe(
       `SELECT id, name, bundle_id, service_id, team_id, key_id, issuer_id, private_key, environment, is_active,
@@ -4833,16 +4144,6 @@ export class PlatformAdminService implements OnModuleInit {
       throw new BadRequestException('provider_type must be ALIPAY, WECHAT, STRIPE, PADDLE, LEMONSQUEEZY or APPLE_IAP');
     }
     return normalized as PlatformPaymentMethodType;
-  }
-
-  private normalizeSmsProviderType(value: unknown): PlatformSmsProviderType {
-    const normalized = String(value || '')
-      .trim()
-      .toUpperCase();
-    if (normalized !== 'GENERIC_API' && normalized !== 'ALIYUN_SMS') {
-      throw new BadRequestException('provider_type must be GENERIC_API or ALIYUN_SMS');
-    }
-    return normalized as PlatformSmsProviderType;
   }
 
   private normalizePaymentMethodConfig(providerType: PlatformPaymentMethodType, config: Record<string, unknown>) {
@@ -4921,45 +4222,6 @@ export class PlatformAdminService implements OnModuleInit {
     };
   }
 
-  private normalizeSmsProviderConfig(providerType: PlatformSmsProviderType, config: Record<string, unknown>) {
-    const raw = asPlainObject(config);
-    const timeoutRaw = Number(raw.timeout_ms ?? 10000);
-    const timeoutMs = Number.isFinite(timeoutRaw) ? Math.min(Math.max(Math.floor(timeoutRaw), 1000), 60000) : 10000;
-    const dispatchModeRaw = String(raw.dispatch_mode || '').trim().toUpperCase();
-    const dispatchMode = dispatchModeRaw === 'ASYNC' ? 'ASYNC' : 'SYNC';
-    if (providerType === 'GENERIC_API') {
-      const methodRaw = String(raw.http_method || 'POST').trim().toUpperCase();
-      const httpMethod = methodRaw === 'GET' ? 'GET' : 'POST';
-      const authTypeRaw = String(raw.auth_type || 'NONE').trim().toUpperCase();
-      const authType = authTypeRaw === 'BEARER' || authTypeRaw === 'API_KEY' ? authTypeRaw : 'NONE';
-      return {
-        enabled: this.parseBooleanLike(raw.enabled, true),
-        endpoint_url: String(raw.endpoint_url || '').trim(),
-        http_method: httpMethod,
-        auth_type: authType,
-        auth_header_name: String(raw.auth_header_name || '').trim() || 'Authorization',
-        auth_token: String(raw.auth_token || '').trim(),
-        api_key: String(raw.api_key || '').trim(),
-        content_type: String(raw.content_type || 'JSON').trim().toUpperCase() === 'FORM' ? 'FORM' : 'JSON',
-        phone_field: String(raw.phone_field || '').trim() || 'phone',
-        code_field: String(raw.code_field || '').trim() || 'code',
-        sign_field: String(raw.sign_field || '').trim() || 'sign_name',
-        template_field: String(raw.template_field || '').trim() || 'template_code',
-        timeout_ms: timeoutMs,
-        dispatch_mode: dispatchMode,
-      };
-    }
-    return {
-      enabled: this.parseBooleanLike(raw.enabled, true),
-      endpoint_url: String(raw.endpoint_url || '').trim() || 'https://dysmsapi.aliyuncs.com/',
-      region_id: String(raw.region_id || '').trim() || 'cn-hangzhou',
-      access_key_id: String(raw.access_key_id || '').trim(),
-      access_key_secret: String(raw.access_key_secret || '').trim(),
-      timeout_ms: timeoutMs,
-      dispatch_mode: dispatchModeRaw === 'SYNC' ? 'SYNC' : 'ASYNC',
-    };
-  }
-
   private assertPaymentMethodConfig(providerType: PlatformPaymentMethodType, config: Record<string, unknown>) {
     const enabled = this.parseBooleanLike(config.enabled, true);
     if (!enabled) {
@@ -5014,25 +4276,6 @@ export class PlatformAdminService implements OnModuleInit {
     const apiKey = String(config.api_key || '').trim();
     if (!appId || !mchId || !apiKey) {
       throw new BadRequestException('微信支付配置缺失：enabled=true 时必须填写 app_id / mch_id / api_key');
-    }
-  }
-
-  private assertSmsProviderConfig(providerType: PlatformSmsProviderType, config: Record<string, unknown>) {
-    const enabled = this.parseBooleanLike(config.enabled, true);
-    if (!enabled) {
-      return;
-    }
-    if (providerType === 'GENERIC_API') {
-      const endpointUrl = String(config.endpoint_url || '').trim();
-      if (!endpointUrl) {
-        throw new BadRequestException('通用短信配置缺失：enabled=true 时必须填写 endpoint_url');
-      }
-      return;
-    }
-    const accessKeyId = String(config.access_key_id || '').trim();
-    const accessKeySecret = String(config.access_key_secret || '').trim();
-    if (!accessKeyId || !accessKeySecret) {
-      throw new BadRequestException('阿里云短信配置缺失：enabled=true 时必须填写 access_key_id / access_key_secret');
     }
   }
 
@@ -5148,95 +4391,6 @@ export class PlatformAdminService implements OnModuleInit {
         has_api_key: !!String(cfg.api_key || '').trim(),
         api_key_masked: this.maskSecret(cfg.api_key),
       },
-    };
-  }
-
-  private serializeSmsProvider(row: PlatformSmsProviderRow) {
-    const cfg = asPlainObject(row.config_json);
-    if (row.provider_type === 'GENERIC_API') {
-      return {
-        id: row.id,
-        provider_type: row.provider_type,
-        name: row.name,
-        is_active: row.is_active,
-        is_default: row.is_default,
-        notes: row.notes,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-        config: {
-          enabled: this.parseBooleanLike(cfg.enabled, true),
-          endpoint_url: String(cfg.endpoint_url || '').trim(),
-          http_method: String(cfg.http_method || 'POST').trim().toUpperCase() === 'GET' ? 'GET' : 'POST',
-          auth_type: String(cfg.auth_type || 'NONE').trim().toUpperCase(),
-          auth_header_name: String(cfg.auth_header_name || '').trim() || 'Authorization',
-          content_type: String(cfg.content_type || 'JSON').trim().toUpperCase(),
-          phone_field: String(cfg.phone_field || '').trim() || 'phone',
-          code_field: String(cfg.code_field || '').trim() || 'code',
-          sign_field: String(cfg.sign_field || '').trim() || 'sign_name',
-          template_field: String(cfg.template_field || '').trim() || 'template_code',
-          timeout_ms: Number(cfg.timeout_ms || 10000),
-          dispatch_mode: String(cfg.dispatch_mode || '').trim().toUpperCase() === 'ASYNC' ? 'ASYNC' : 'SYNC',
-          has_auth_token: !!String(cfg.auth_token || '').trim(),
-          auth_token_masked: this.maskSecret(cfg.auth_token),
-          has_api_key: !!String(cfg.api_key || '').trim(),
-          api_key_masked: this.maskSecret(cfg.api_key),
-        },
-      };
-    }
-    return {
-      id: row.id,
-      provider_type: row.provider_type,
-      name: row.name,
-      is_active: row.is_active,
-      is_default: row.is_default,
-      notes: row.notes,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-      config: {
-        enabled: this.parseBooleanLike(cfg.enabled, true),
-        endpoint_url: String(cfg.endpoint_url || '').trim() || 'https://dysmsapi.aliyuncs.com/',
-        region_id: String(cfg.region_id || '').trim() || 'cn-hangzhou',
-        timeout_ms: Number(cfg.timeout_ms || 10000),
-        dispatch_mode: String(cfg.dispatch_mode || '').trim().toUpperCase() === 'SYNC' ? 'SYNC' : 'ASYNC',
-        access_key_id: String(cfg.access_key_id || '').trim(),
-        has_access_key_secret: !!String(cfg.access_key_secret || '').trim(),
-        access_key_secret_masked: this.maskSecret(cfg.access_key_secret),
-      },
-    };
-  }
-
-  private serializeSmsSignature(row: PlatformSmsSignatureRow) {
-    const meta = asPlainObject(row.meta_json);
-    return {
-      id: row.id,
-      provider_id: row.provider_id,
-      sign_name: row.sign_name,
-      is_active: row.is_active,
-      is_default: row.is_default,
-      notes: row.notes,
-      meta,
-      created_by_user_id: row.created_by_user_id,
-      updated_by_user_id: row.updated_by_user_id,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-    };
-  }
-
-  private serializeSmsTemplate(row: PlatformSmsTemplateRow) {
-    const meta = asPlainObject(row.meta_json);
-    return {
-      id: row.id,
-      provider_id: row.provider_id,
-      template_code: row.template_code,
-      template_name: row.template_name,
-      is_active: row.is_active,
-      is_default: row.is_default,
-      notes: row.notes,
-      meta,
-      created_by_user_id: row.created_by_user_id,
-      updated_by_user_id: row.updated_by_user_id,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
     };
   }
 
