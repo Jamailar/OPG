@@ -241,8 +241,8 @@ async function bootstrap() {
   SwaggerModule.setup('api/docs', app, document);
 
   const port = appConfig.port || 3000;
-  await app.init();
   registerBundledWebFallback(app, bundledWeb);
+  await app.init();
   await app.listen(port);
   console.log(`Application is running on: http://localhost:${port}`);
   console.log(`Swagger docs available at: http://localhost:${port}/api/docs`);
