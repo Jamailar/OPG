@@ -334,15 +334,80 @@ export interface BootstrapStatus {
   platform_super_admin_exists: boolean;
 }
 
+const BOOTSTRAP_REQUEST_TIMEOUT_MS = 15000;
+
+function buildBootstrapUrlCandidates(path: string): string[] {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  const apiBaseUrl = (runtimeContext.apiBaseUrl || '').replace(/\/+$/, '');
+  const apiV1BaseUrl = (runtimeContext.apiV1BaseUrl || '').replace(/\/+$/, '');
+  const browserOrigin = typeof window !== 'undefined' ? window.location.origin.replace(/\/+$/, '') : '';
+  const rootBaseUrls = [apiBaseUrl, browserOrigin].filter(Boolean);
+  const apiV1BaseUrls = [
+    apiV1BaseUrl,
+    apiBaseUrl ? `${apiBaseUrl}/api/v1` : '',
+    browserOrigin ? `${browserOrigin}/api/v1` : '',
+  ].filter(Boolean);
+  const candidates = [
+    ...rootBaseUrls.map((baseUrl) => `${baseUrl}${normalizedPath}`),
+    ...apiV1BaseUrls.map((baseUrl) => `${baseUrl}${normalizedPath}`),
+  ];
+
+  if (candidates.length === 0) {
+    candidates.push(normalizedPath, `/api/v1${normalizedPath}`);
+  }
+
+  return Array.from(new Set(candidates));
+}
+
+function canRetryBootstrapCandidate(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) {
+    return false;
+  }
+  if (!error.response) {
+    return true;
+  }
+  return error.response.status === 404;
+}
+
+async function requestBootstrap<T>(
+  path: string,
+  options: { method: 'GET' | 'POST'; data?: unknown },
+): Promise<T> {
+  const candidates = buildBootstrapUrlCandidates(path);
+  let lastError: unknown = null;
+
+  for (let index = 0; index < candidates.length; index += 1) {
+    try {
+      const response = await axios.request<T>({
+        url: candidates[index],
+        method: options.method,
+        data: options.data,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        timeout: BOOTSTRAP_REQUEST_TIMEOUT_MS,
+        withCredentials: true,
+      });
+      return response.data;
+    } catch (error) {
+      lastError = error;
+      if (index < candidates.length - 1 && canRetryBootstrapCandidate(error)) {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw lastError || new Error('bootstrap request failed');
+}
+
 export const bootstrapApi = {
   getStatus: async (): Promise<BootstrapStatus> => {
-    const response = await apiClient.getClient().get('/bootstrap/status');
-    return response.data;
+    return requestBootstrap<BootstrapStatus>('/bootstrap/status', { method: 'GET' });
   },
 
   createPlatformAdmin: async (data: { email: string; password: string; display_name?: string }) => {
-    const response = await apiClient.getClient().post('/bootstrap/platform-admin', data);
-    return response.data;
+    return requestBootstrap('/bootstrap/platform-admin', { method: 'POST', data });
   },
 };
 

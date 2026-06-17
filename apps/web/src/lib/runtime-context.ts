@@ -31,7 +31,7 @@ function isLocalHost(host: string): boolean {
 }
 
 function resolveApiBaseUrl(): string {
-  const envBase = readRuntimeConfig('VITE_API_BASE_URL') || (import.meta.env.VITE_API_BASE_URL || '').trim();
+  const envBase = readConfiguredApiBaseUrl();
   if (envBase) {
     const normalized = envBase.replace(/\/+$/, '');
     if (typeof window !== 'undefined') {
@@ -60,6 +60,14 @@ function resolveApiBaseUrl(): string {
   }
 
   return '';
+}
+
+function readConfiguredApiBaseUrl(): string {
+  return readRuntimeConfig('VITE_API_BASE_URL') || (import.meta.env.VITE_API_BASE_URL || '').trim();
+}
+
+function hasConfiguredApiBaseUrl(): boolean {
+  return Boolean(readConfiguredApiBaseUrl());
 }
 
 let API_BASE_URL = resolveApiBaseUrl();
@@ -154,12 +162,15 @@ async function loadRemoteRuntimeConfig(): Promise<void> {
     return;
   }
 
+  const hasExplicitApiBaseUrl = hasConfiguredApiBaseUrl();
+  const sameOriginRuntimeConfigUrl = `${window.location.origin}/runtime-config`;
+  const configuredRuntimeConfigUrl = API_BASE_URL ? `${API_BASE_URL}/runtime-config` : '';
   const candidates = Array.from(
     new Set(
-      [
-        API_BASE_URL ? `${API_BASE_URL}/runtime-config` : '',
-        `${window.location.origin}/runtime-config`,
-      ].filter(Boolean),
+      (hasExplicitApiBaseUrl
+        ? [configuredRuntimeConfigUrl, sameOriginRuntimeConfigUrl]
+        : [sameOriginRuntimeConfigUrl, configuredRuntimeConfigUrl]
+      ).filter(Boolean),
     ),
   );
 
