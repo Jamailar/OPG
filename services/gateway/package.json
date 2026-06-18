@@ -1,6 +1,6 @@
 {
   "name": "opg-gateway",
-  "version": "1.0.116",
+  "version": "1.0.117",
   "description": "OPG Gateway API - NestJS Backend",
   "main": "dist/main.js",
   "scripts": {
