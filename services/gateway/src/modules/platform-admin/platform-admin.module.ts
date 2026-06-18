@@ -22,6 +22,7 @@ import { PlatformAdminAccessGuard } from '../../common/guards/platform-admin-acc
 import { FeedbackAdminApiKeyGuard } from '../../common/guards/feedback-admin-api-key.guard';
 import { RuntimeSettingsModule } from '../runtime-settings/runtime-settings.module';
 import { SmsModule } from '../sms/sms.module';
+import { BuiltInTestAppSeedService } from './built-in-test-app-seed.service';
 
 @Module({
   imports: [AiChatModule, RedeemModule, BehaviorAnalyticsModule, FeedbackModule, PaymentsModule, AuthModule, TenantSiteModule, EmailDeliveryModule, OutboundProxyModule, RuntimeSettingsModule, SmsModule],
@@ -34,6 +35,7 @@ import { SmsModule } from '../sms/sms.module';
     PlatformAnalyticsSourceTablesService,
     PlatformAnalyticsFactsReadStateService,
     PlatformAnalyticsFactsRefreshStateRepository,
+    BuiltInTestAppSeedService,
     PlatformAdminAiDebugJwtAuthGuard,
     PlatformAdminAccessGuard,
     FeedbackAdminApiKeyGuard,
