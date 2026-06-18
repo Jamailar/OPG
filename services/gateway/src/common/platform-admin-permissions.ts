@@ -15,6 +15,11 @@ export const PLATFORM_APP_ADMIN_PERMISSION_CATALOG = [
     description: '查看 AI 调用、消耗与日志',
   },
   {
+    key: 'app_logs_read',
+    name: '日志',
+    description: '查看应用请求、审计和任务日志',
+  },
+  {
     key: 'app_api_docs_read',
     name: 'API 文档',
     description: '查看当前应用 API 文档',

@@ -164,11 +164,14 @@ export class PlatformTasksService implements OnModuleInit {
     return this.paginated(rows, paging);
   }
 
-  async getTask(taskId: string) {
+  async getTask(taskId: string, appId?: string | null) {
     if (!(await this.ensureSchema())) throw new NotFoundException('platform task schema is not ready');
+    const normalizedAppId = this.nullableUuid(appId);
+    const appFilter = normalizedAppId ? ` AND app_id = $2::uuid` : '';
+    const params = normalizedAppId ? [this.requiredUuid(taskId), normalizedAppId] : [this.requiredUuid(taskId)];
     const taskRows = (await this.prisma.$queryRawUnsafe(
-      `SELECT * FROM platform_tasks WHERE id = $1::uuid LIMIT 1`,
-      this.requiredUuid(taskId),
+      `SELECT * FROM platform_tasks WHERE id = $1::uuid${appFilter} LIMIT 1`,
+      ...params,
     )) as Record<string, unknown>[];
     const task = taskRows[0];
     if (!task) throw new NotFoundException('platform task not found');

@@ -3742,6 +3742,16 @@ export const platformApi = {
     return response.data;
   },
 
+  listAppRequestEvents: async (appId: string, params?: Omit<PlatformObservabilityEventsQuery, 'app_id'>) => {
+    const response = await apiClient.getClient().get(`/platform-admin/apps/${appId}/observability/request-events`, { params });
+    return response.data;
+  },
+
+  listAppAuditEvents: async (appId: string, params?: Omit<PlatformObservabilityEventsQuery, 'app_id'>) => {
+    const response = await apiClient.getClient().get(`/platform-admin/apps/${appId}/observability/audit-events`, { params });
+    return response.data;
+  },
+
   getPlatformTaskRuntime: async (): Promise<PlatformTaskRuntime> => {
     const response = await apiClient.getClient().get('/platform-admin/tasks/runtime');
     return response.data?.data || response.data;
@@ -3754,6 +3764,16 @@ export const platformApi = {
 
   getPlatformTask: async (taskId: string): Promise<PlatformTaskDetail> => {
     const response = await apiClient.getClient().get(`/platform-admin/tasks/${taskId}`);
+    return response.data?.data || response.data;
+  },
+
+  listAppTasks: async (appId: string, params?: Omit<PlatformTasksQuery, 'app_id'>): Promise<PlatformTasksResponse> => {
+    const response = await apiClient.getClient().get(`/platform-admin/apps/${appId}/tasks`, { params });
+    return response.data?.data || response.data;
+  },
+
+  getAppTask: async (appId: string, taskId: string): Promise<PlatformTaskDetail> => {
+    const response = await apiClient.getClient().get(`/platform-admin/apps/${appId}/tasks/${taskId}`);
     return response.data?.data || response.data;
   },
 

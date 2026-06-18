@@ -93,6 +93,7 @@ export class PlatformAdminController {
   async listPlatformAuditEvents(
     @Query('actor_user_id') actorUserId?: string,
     @Query('app_id') appId?: string,
+    @Query('request_id') requestId?: string,
     @Query('module') module?: string,
     @Query('action') action?: string,
     @Query('resource_type') resourceType?: string,
@@ -104,6 +105,67 @@ export class PlatformAdminController {
     return this.platformObservabilityService.listAuditEvents({
       actor_user_id: actorUserId,
       app_id: appId,
+      request_id: requestId,
+      module,
+      action,
+      resource_type: resourceType,
+      resource_id: resourceId,
+      days,
+      page,
+      page_size: pageSize,
+    });
+  }
+
+  @Get('apps/:app_id/observability/request-events')
+  @ApiOperation({ summary: '租户请求事件' })
+  async listAppPlatformRequestEvents(
+    @Param('app_id') appId: string,
+    @Query('actor_user_id') actorUserId?: string,
+    @Query('request_id') requestId?: string,
+    @Query('module') module?: string,
+    @Query('operation') operation?: string,
+    @Query('resource_type') resourceType?: string,
+    @Query('resource_id') resourceId?: string,
+    @Query('success') success?: string,
+    @Query('status_min') statusMin?: string,
+    @Query('days') days?: string,
+    @Query('page') page?: string,
+    @Query('page_size') pageSize?: string,
+  ) {
+    return this.platformObservabilityService.listRequestEvents({
+      app_id: appId,
+      actor_user_id: actorUserId,
+      request_id: requestId,
+      module,
+      operation,
+      resource_type: resourceType,
+      resource_id: resourceId,
+      success,
+      status_min: statusMin,
+      days,
+      page,
+      page_size: pageSize,
+    });
+  }
+
+  @Get('apps/:app_id/observability/audit-events')
+  @ApiOperation({ summary: '租户审计事件' })
+  async listAppPlatformAuditEvents(
+    @Param('app_id') appId: string,
+    @Query('actor_user_id') actorUserId?: string,
+    @Query('request_id') requestId?: string,
+    @Query('module') module?: string,
+    @Query('action') action?: string,
+    @Query('resource_type') resourceType?: string,
+    @Query('resource_id') resourceId?: string,
+    @Query('days') days?: string,
+    @Query('page') page?: string,
+    @Query('page_size') pageSize?: string,
+  ) {
+    return this.platformObservabilityService.listAuditEvents({
+      actor_user_id: actorUserId,
+      app_id: appId,
+      request_id: requestId,
       module,
       action,
       resource_type: resourceType,
@@ -154,6 +216,42 @@ export class PlatformAdminController {
   @ApiOperation({ summary: '平台任务详情' })
   async getPlatformTask(@Param('task_id') taskId: string) {
     return this.platformTasksService.getTask(taskId);
+  }
+
+  @Get('apps/:app_id/tasks')
+  @ApiOperation({ summary: '租户平台任务列表' })
+  async listAppPlatformTasks(
+    @Param('app_id') appId: string,
+    @Query('module') module?: string,
+    @Query('action') action?: string,
+    @Query('status') status?: string,
+    @Query('queue_name') queueName?: string,
+    @Query('request_id') requestId?: string,
+    @Query('source_type') sourceType?: string,
+    @Query('source_id') sourceId?: string,
+    @Query('days') days?: string,
+    @Query('page') page?: string,
+    @Query('page_size') pageSize?: string,
+  ) {
+    return this.platformTasksService.listTasks({
+      app_id: appId,
+      module,
+      action,
+      status,
+      queue_name: queueName,
+      request_id: requestId,
+      source_type: sourceType,
+      source_id: sourceId,
+      days,
+      page,
+      page_size: pageSize,
+    });
+  }
+
+  @Get('apps/:app_id/tasks/:task_id')
+  @ApiOperation({ summary: '租户平台任务详情' })
+  async getAppPlatformTask(@Param('app_id') appId: string, @Param('task_id') taskId: string) {
+    return this.platformTasksService.getTask(taskId, appId);
   }
 
   @Post('tasks')

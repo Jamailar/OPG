@@ -3222,6 +3222,29 @@ code {
   gap: 18px;
 }
 
+.app-logs-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.app-logs-panel .ai-hub-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.app-logs-panel .segmented-control {
+  flex: 1 1 280px;
+}
+
+.app-logs-panel .platform-filter-input {
+  flex: 0 1 220px;
+}
+
+.app-logs-ai-panel > .platform-page {
+  padding: 0;
+}
+
 .api-docs-page {
   display: grid;
   gap: 16px;

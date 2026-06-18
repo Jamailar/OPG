@@ -133,6 +133,12 @@ export class PlatformAdminAccessGuard implements CanActivate {
     if (path.match(/^\/apps\/[^/]+\/ai\/usage(?:\/|$)/)) {
       return { kind: 'app-permission', permissions: ['app_ai_usage_read'] };
     }
+    if (path.match(/^\/apps\/[^/]+\/observability(?:\/|$)/)) {
+      return { kind: 'app-permission', permissions: ['app_logs_read'] };
+    }
+    if (method === 'GET' && path.match(/^\/apps\/[^/]+\/tasks(?:\/|$)/)) {
+      return { kind: 'app-permission', permissions: ['app_logs_read'] };
+    }
     if (method === 'GET' && path.match(/^\/apps\/[^/]+\/ai\/points-settings$/)) {
       return { kind: 'app-permission', permissions: ['app_ai_usage_read'] };
     }

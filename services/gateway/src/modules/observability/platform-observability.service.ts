@@ -64,6 +64,7 @@ type ListRequestEventsInput = {
 type ListAuditEventsInput = {
   actor_user_id?: string;
   app_id?: string;
+  request_id?: string;
   module?: string;
   action?: string;
   resource_type?: string;
@@ -211,6 +212,7 @@ export class PlatformObservabilityService implements OnModuleInit {
     const params: unknown[] = [];
     this.addUuidFilter(where, params, 'actor_user_id', input.actor_user_id);
     this.addUuidFilter(where, params, 'app_id', input.app_id);
+    this.addTextFilter(where, params, 'request_id', input.request_id, 128);
     this.addTextFilter(where, params, 'module', input.module, 64);
     this.addTextFilter(where, params, 'action', input.action, 96);
     this.addTextFilter(where, params, 'resource_type', input.resource_type, 64);

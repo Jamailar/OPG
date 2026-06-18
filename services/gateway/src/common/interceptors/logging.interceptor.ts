@@ -102,11 +102,12 @@ export class LoggingInterceptor implements NestInterceptor {
 
     const context = this.requestContext.get();
     const errorMessage = error instanceof Error ? error.message : String((error as any)?.message || '');
+    const appContext = this.resolveAppContext(request, url);
     this.observability.recordRequestEventSafe({
       request_id: request?.requestId || context?.request_id || null,
       trace_id: request?.traceId || context?.trace_id || null,
-      app_id: request?.user?.app_id || request?.user?.appId || null,
-      app_slug: request?.user?.app_slug || request?.user?.appSlug || null,
+      app_id: appContext.app_id,
+      app_slug: appContext.app_slug,
       actor_user_id: request?.user?.id || request?.user?.userId || null,
       module: this.resolveModule(url),
       operation: `${String(method || 'GET').toUpperCase()} ${this.normalizeRoutePath(url)}`,
@@ -137,8 +138,7 @@ export class LoggingInterceptor implements NestInterceptor {
     this.observability.recordAuditEventSafe({
       request_id: request?.requestId || this.requestContext.getRequestId(),
       actor_user_id: request?.user?.id || request?.user?.userId || null,
-      app_id: request?.user?.app_id || request?.user?.appId || null,
-      app_slug: request?.user?.app_slug || request?.user?.appSlug || null,
+      ...this.resolveAppContext(request, path),
       module: this.resolveModule(path),
       action: `${normalizedMethod} ${path}`.slice(0, 96),
       resource_type: this.resolveResourceType(path),
@@ -155,6 +155,28 @@ export class LoggingInterceptor implements NestInterceptor {
 
   private isMutationMethod(method: string): boolean {
     return ['POST', 'PUT', 'PATCH', 'DELETE'].includes(String(method || '').toUpperCase());
+  }
+
+  private resolveAppContext(request: any, url: string): { app_id: string | null; app_slug: string | null } {
+    const userAppId = request?.user?.app_id || request?.user?.appId || null;
+    const userAppSlug = request?.user?.app_slug || request?.user?.appSlug || null;
+    const routeAppId = request?.params?.app_id || request?.params?.appId || null;
+    const pathAppId = this.extractPlatformAppIdFromPath(url);
+
+    return {
+      app_id: routeAppId || pathAppId || userAppId || null,
+      app_slug: userAppSlug || null,
+    };
+  }
+
+  private extractPlatformAppIdFromPath(url: string): string | null {
+    const path = this.normalizeRoutePath(url);
+    const match = path.match(/^\/(?:api\/v1\/)?platform-admin\/apps\/([^/]+)/);
+    if (!match?.[1]) {
+      return null;
+    }
+    const value = decodeURIComponent(match[1]);
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value) ? value : null;
   }
 
   private buildAuditSnapshot(value: unknown, depth = 0): unknown {
