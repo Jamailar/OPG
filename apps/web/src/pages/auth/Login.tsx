@@ -47,10 +47,11 @@ export default function Login() {
       setMessage({ type: 'success', text: '登录成功！' });
       // 登录成功后跳转到管理后台
       setTimeout(() => {
-        const sdkLoginReturn = localStorage.getItem('opg_sdk_login_return') || '';
+        const sdkLoginReturn = localStorage.getItem('opg_sdk_login_return') || sessionStorage.getItem('opg_sdk_login_return') || '';
         if (sdkLoginReturn.startsWith('/sdk-login')) {
           localStorage.removeItem('opg_sdk_login_return');
-          navigate(sdkLoginReturn);
+          sessionStorage.removeItem('opg_sdk_login_return');
+          window.location.assign(sdkLoginReturn);
           return;
         }
         navigate(runtimeContext.homePath);

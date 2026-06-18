@@ -33,10 +33,20 @@ export default function SdkLogin() {
   const [authorizing, setAuthorizing] = useState(false);
   const [message, setMessage] = useState<{ type: 'error' | 'info'; text: string } | null>(null);
 
+  const authorizationMode = session?.mode === 'app' && session.app ? 'app' : 'platform';
+  const authorizationLabel = authorizationMode === 'platform' ? '全平台授权' : '单个应用授权';
+
   useEffect(() => {
     let cancelled = false;
     async function loadSession() {
       if (!baseUrl || !state) {
+        const savedReturn = typeof window !== 'undefined'
+          ? localStorage.getItem('opg_sdk_login_return') || sessionStorage.getItem('opg_sdk_login_return') || ''
+          : '';
+        if (savedReturn.includes('/sdk-login') && savedReturn.includes('state=')) {
+          window.location.assign(savedReturn);
+          return;
+        }
         setMessage({ type: 'error', text: '授权链接缺少必要参数' });
         setLoading(false);
         return;
@@ -76,7 +86,9 @@ export default function SdkLogin() {
 
   const loginAndReturn = () => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('opg_sdk_login_return', `${window.location.pathname}${window.location.search}`);
+      const returnUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      localStorage.setItem('opg_sdk_login_return', returnUrl);
+      sessionStorage.setItem('opg_sdk_login_return', returnUrl);
     }
     navigate(runtimeContext.loginPath);
   };
@@ -121,38 +133,53 @@ export default function SdkLogin() {
   };
 
   return (
-    <div className="ac-login-page ac-login-screen">
-      <div className="ac-login-backdrop" aria-hidden="true" />
-      <div className="ac-login-shell">
-        <section className="ac-login-card">
-          <div className="ac-login-card-brand">
-            <strong>OPG SDK</strong>
-            <span>浏览器授权</span>
-          </div>
-          <div className="ac-login-header">
-            <h1>授权本地开发工具</h1>
-            <p>
-              {session
-                ? session.mode === 'platform' || !session.app
-                  ? `${session.client} 将访问平台控制面`
-                  : `${session.client} 将访问 ${session.app.name || session.app.slug}`
-                : '加载授权会话中'}
-            </p>
-          </div>
+    <div className="sdk-auth-page">
+      <section className="sdk-auth-card">
+        <div className="sdk-auth-brand">
+          <strong>OPG</strong>
+          <span>CLI 授权</span>
+        </div>
+        <div className="sdk-auth-header">
+          <h1>授权本地开发工具</h1>
+          <p>
+            {session
+              ? authorizationMode === 'platform'
+                ? `${session.client} 将获得平台控制面权限`
+                : `${session.client} 将访问 ${session.app?.name || session.app?.slug}`
+              : '加载授权会话中'}
+          </p>
+        </div>
 
-          {loading ? <div className="loading">加载中...</div> : null}
+        {loading ? <div className="loading">加载中...</div> : null}
 
-          {!loading && session ? (
-            <div className="ac-login-form">
-              <label>
-                <span>应用</span>
-                <input readOnly value={session.app?.slug || 'platform'} />
-              </label>
-              <label>
+        {!loading && session ? (
+          <div className="sdk-auth-form">
+            <div className="sdk-auth-mode" aria-label="授权范围">
+              <div className={`sdk-auth-mode-option ${authorizationMode === 'platform' ? 'active' : ''}`}>
+                <strong>全平台授权</strong>
+                <span>用于创建 app、管理平台配置和安装 MCP。默认授权范围。</span>
+              </div>
+              {authorizationMode === 'app' ? (
+                <div className="sdk-auth-mode-option active">
+                  <strong>单个应用授权</strong>
+                  <span>{session.app?.slug}</span>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="sdk-auth-meta">
+              <div>
+                <span>授权范围</span>
+                <strong>{authorizationLabel}</strong>
+              </div>
+              <div>
                 <span>配置</span>
-                <input readOnly value={session.profile || 'default'} />
-              </label>
-              {session.scope_catalog?.length ? <div className="platform-permission-grid">
+                <strong>{session.profile || 'default'}</strong>
+              </div>
+            </div>
+
+            {session.scope_catalog?.length ? (
+              <div className="platform-permission-grid sdk-auth-scopes">
                 {(session.scope_catalog || []).map((scope) => (
                   <label key={scope.key} className="platform-permission-item">
                     <input
@@ -164,17 +191,19 @@ export default function SdkLogin() {
                     <span>{scope.label}</span>
                   </label>
                 ))}
-              </div> : null}
-              {message ? <div className={`message ${message.type}`}>{message.text}</div> : null}
-              <button className="btn ac-login-btn" type="button" onClick={authorize} disabled={authorizing || expired}>
-                {authorizing ? '授权中...' : expired ? '授权已过期' : authService.isAuthenticated() ? '授权' : '登录后授权'}
-              </button>
-            </div>
-          ) : null}
+              </div>
+            ) : null}
 
-          {!loading && !session && message ? <div className={`message ${message.type}`}>{message.text}</div> : null}
-        </section>
-      </div>
+            {message ? <div className={`message ${message.type}`}>{message.text}</div> : null}
+
+            <button className="btn sdk-auth-btn" type="button" onClick={authorize} disabled={authorizing || expired}>
+              {authorizing ? '授权中...' : expired ? '授权已过期' : authService.isAuthenticated() ? '授权' : '登录后授权'}
+            </button>
+          </div>
+        ) : null}
+
+        {!loading && !session && message ? <div className={`message ${message.type}`}>{message.text}</div> : null}
+      </section>
     </div>
   );
 }
