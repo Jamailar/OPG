@@ -2,6 +2,8 @@
 
 CLI and Codex MCP bridge for OPG backend services.
 
+Full usage guide: `docs/CLI_USAGE.md` in the OPG_system repository.
+
 ```bash
 npm install -g @jamba/opg-cli
 opg --help
@@ -49,8 +51,20 @@ opg platform runtime get
 opg platform runtime update --json '{"api_base_url":"https://opg.example.com"}'
 opg platform feedbacks list --app-id <app-id> --status open
 opg platform feedbacks get --app-id <app-id> --feedback-id <feedback-id>
+opg platform feedbacks update --app-id <app-id> --feedback-id <feedback-id> --json '{"status":"triaged"}'
+opg platform feedbacks comment --app-id <app-id> --feedback-id <feedback-id> --json '{"body":"已收到","is_internal":true}'
+opg platform feedbacks review --app-id <app-id> --feedback-id <feedback-id> --json '{"action":"thanks"}'
+opg platform analytics business --app-id <app-id> --days 30
+opg platform analytics overview --app-id <app-id> --days 30
+opg platform analytics growth --app-id <app-id> --days 30
+opg platform analytics retention --app-id <app-id> --days 30
+opg platform analytics profiles --app-id <app-id> --days 30
+opg platform analytics conversion --app-id <app-id> --days 30
 opg platform analytics users --app-id <app-id> --days 30
+opg platform ai-usage summary --app-id <app-id> --days 7
+opg platform ai-usage breakdown --app-id <app-id> --days 7
 opg platform ai-usage logs --app-id <app-id> --days 7
+opg platform payments products --app-id <app-id>
 opg platform payments orders --app-id <app-id> --page 1
 opg platform request --path /storage/providers --method GET
 ```
@@ -96,3 +110,16 @@ opg db describe app_my_app__customers
 opg db query --sql "SELECT * FROM app_my_app__customers"
 opg db execute --sql "CREATE TABLE app_my_app__customers (id uuid PRIMARY KEY DEFAULT gen_random_uuid())" --dry-run true
 ```
+
+## Release Verification
+
+Before publishing:
+
+```bash
+npm --prefix packages/cli run build
+npm run cli:verify
+```
+
+The verifier creates a temporary app, submits a test feedback item, checks
+app/platform/feedback/analytics/AI usage/payments/database/Codex/MCP commands,
+marks the temporary app inactive, and restores local `.opg` config.

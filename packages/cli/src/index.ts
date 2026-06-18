@@ -1712,8 +1712,21 @@ Usage:
   opg platform apps create --json '{"name":"Demo","slug":"demo"}'
   opg platform apps update --app-id <id> --json '{...}'
   opg platform feedbacks list --app-id <id>
+  opg platform feedbacks get --app-id <id> --feedback-id <id>
+  opg platform feedbacks update --app-id <id> --feedback-id <id> --json '{...}'
+  opg platform feedbacks comment --app-id <id> --feedback-id <id> --json '{...}'
+  opg platform feedbacks review --app-id <id> --feedback-id <id> --json '{...}'
+  opg platform analytics business --app-id <id> --days 30
+  opg platform analytics overview --app-id <id> --days 30
+  opg platform analytics growth --app-id <id> --days 30
+  opg platform analytics retention --app-id <id> --days 30
+  opg platform analytics profiles --app-id <id> --days 30
+  opg platform analytics conversion --app-id <id> --days 30
   opg platform analytics users --app-id <id> --days 30
+  opg platform ai-usage summary --app-id <id> --days 7
+  opg platform ai-usage breakdown --app-id <id> --days 7
   opg platform ai-usage logs --app-id <id> --days 7
+  opg platform payments products --app-id <id>
   opg platform payments orders --app-id <id>
   opg platform runtime get
   opg platform runtime update --json '{...}'
@@ -1730,6 +1743,7 @@ Options:
 
 Examples:
   opg platform apps list
+  opg platform feedbacks list --app-id <id>
   opg platform runtime get
   opg platform request --path /storage/providers --method GET
 `);

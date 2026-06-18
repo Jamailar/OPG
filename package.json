@@ -16,6 +16,7 @@
     "gateway:build": "npm --prefix services/gateway run build",
     "sdk:build": "npm --prefix packages/sdk run build",
     "cli:build": "npm --prefix packages/cli run build",
+    "cli:verify": "node scripts/verify-opg-cli.mjs",
     "sdk:db:smoke": "node scripts/verify-opg-database-sdk.mjs"
   },
   "engines": {

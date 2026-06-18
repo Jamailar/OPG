@@ -1,6 +1,6 @@
 {
   "name": "@jamba/opg-cli",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "OPG CLI and Codex MCP server for AI app backend development.",
   "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
