@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   platformApi,
@@ -56,6 +56,33 @@ function openWorkspacePath(appId: string): string {
   return `/platform-admin/apps/${appId}/overview`;
 }
 
+function normalizeSlugValue(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64);
+}
+
+function startsWithChineseCharacter(value: string): boolean {
+  return /^[\u4e00-\u9fff]/.test(value.trim());
+}
+
+async function deriveSlugFromName(name: string): Promise<string> {
+  const trimmed = name.trim();
+  if (!trimmed) return '';
+
+  if (startsWithChineseCharacter(trimmed)) {
+    const { pinyin } = await import('pinyin-pro');
+    const chineseName = (trimmed.match(/[\u4e00-\u9fff]/g) || []).slice(0, 2).join('');
+    const syllables = pinyin(chineseName, { toneType: 'none', type: 'array' }) as string[];
+    return normalizeSlugValue(syllables.join(''));
+  }
+
+  return normalizeSlugValue(trimmed);
+}
+
 export default function AppTenants() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -64,6 +91,7 @@ export default function AppTenants() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formVisible, setFormVisible] = useState(false);
   const [form, setForm] = useState<AppFormState>(EMPTY_FORM);
+  const slugManuallyEditedRef = useRef(false);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
 
@@ -89,11 +117,13 @@ export default function AppTenants() {
   const openCreate = () => {
     setEditingId(null);
     setForm(EMPTY_FORM);
+    slugManuallyEditedRef.current = false;
     setFormVisible(true);
   };
 
   const openEdit = (app: PlatformAppItem) => {
     setEditingId(app.id);
+    slugManuallyEditedRef.current = true;
     setForm({
       slug: app.slug,
       name: app.name,
@@ -114,7 +144,29 @@ export default function AppTenants() {
   const closeForm = () => {
     setEditingId(null);
     setForm(EMPTY_FORM);
+    slugManuallyEditedRef.current = false;
     setFormVisible(false);
+  };
+
+  const handleNameChange = (name: string) => {
+    const shouldAutoSlug = !editingId && !slugManuallyEditedRef.current;
+    const canDeriveSync = !startsWithChineseCharacter(name);
+    setForm((prev) => ({
+      ...prev,
+      name,
+      slug: shouldAutoSlug && canDeriveSync ? normalizeSlugValue(name) : prev.slug,
+    }));
+    if (shouldAutoSlug && !canDeriveSync) {
+      void deriveSlugFromName(name).then((slug) => {
+        if (slugManuallyEditedRef.current) return;
+        setForm((prev) => (prev.name === name ? { ...prev, slug } : prev));
+      });
+    }
+  };
+
+  const handleSlugChange = (slug: string) => {
+    slugManuallyEditedRef.current = true;
+    setForm((prev) => ({ ...prev, slug: normalizeSlugValue(slug) }));
   };
 
   const buildDomains = (): PlatformAppDomainInput[] => {
@@ -292,21 +344,21 @@ export default function AppTenants() {
             </div>
 
             <form onSubmit={handleSubmit} className="platform-form-grid">
-              <div className="form-group">
-                <label>应用 Slug</label>
-                <input
-                  value={form.slug}
-                  onChange={(event) => setForm((prev) => ({ ...prev, slug: event.target.value }))}
-                  disabled={Boolean(editingId)}
-                  placeholder="例如: demo-app"
-                />
-              </div>
-              <div className="form-group">
+              <div className="form-group platform-form-span-2">
                 <label>应用名称</label>
                 <input
                   value={form.name}
-                  onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
+                  onChange={(event) => handleNameChange(event.target.value)}
                   placeholder="应用名称"
+                />
+              </div>
+              <div className="form-group platform-form-span-2">
+                <label>应用 Slug</label>
+                <input
+                  value={form.slug}
+                  onChange={(event) => handleSlugChange(event.target.value)}
+                  disabled={Boolean(editingId)}
+                  placeholder="根据应用名称自动生成"
                 />
               </div>
               <div className="form-group">
