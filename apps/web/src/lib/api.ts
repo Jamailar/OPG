@@ -388,6 +388,13 @@ async function requestBootstrap<T>(
         timeout: BOOTSTRAP_REQUEST_TIMEOUT_MS,
         withCredentials: true,
       });
+      if (!response.data || typeof response.data !== 'object') {
+        lastError = new Error(`bootstrap endpoint returned invalid response: ${candidates[index]}`);
+        if (index < candidates.length - 1) {
+          continue;
+        }
+        throw lastError;
+      }
       return response.data;
     } catch (error) {
       lastError = error;

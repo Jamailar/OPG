@@ -11,6 +11,10 @@ class AuthService {
   private readonly LEGACY_USER_KEY = 'user';
 
   private resolveLoginBaseUrl(): string {
+    if (runtimeContext.isPlatformPortal) {
+      return runtimeContext.apiV1BaseUrl;
+    }
+
     const apiBase = String(runtimeContext.apiBaseUrl || '').trim().replace(/\/+$/, '');
     const appSlug = String(runtimeContext.appSlug || '').trim();
     if (apiBase && appSlug) {

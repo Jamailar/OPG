@@ -49,7 +49,7 @@ function FirstRunGate({ children }: { children: React.ReactNode }) {
       })
       .catch(() => {
         if (cancelled) return;
-        setState('ready');
+        setState('setup-required');
       });
 
     return () => {
