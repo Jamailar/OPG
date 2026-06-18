@@ -124,7 +124,7 @@ docker run --rm -p 8080:3000 \
   opg-web:latest
 ```
 
-分离部署时，`VITE_API_BASE_URL` 应指向后端 Gateway 域名。CORS 首次冷启动可以用 `CORS_ORIGINS`，之后应在平台设置里维护域名和 CORS。
+分离部署时，`VITE_API_BASE_URL` 应指向后端 Gateway 域名。CORS 首次冷启动可以用 `CORS_ORIGINS`，之后通过 `platform_runtime_settings` 或运维脚本维护。
 
 ## 必要环境变量
 

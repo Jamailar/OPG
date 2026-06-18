@@ -1096,33 +1096,6 @@ export interface PlatformPaymentMethodItem {
   updated_at?: string;
 }
 
-export interface PlatformRuntimeSettings {
-  id: string;
-  platform_app_id?: string | null;
-  api_base_url?: string | null;
-  admin_frontend_url?: string | null;
-  cors_origins: string[];
-  session_policy: Record<string, unknown>;
-  payments_scheduler: Record<string, unknown>;
-  ai_gateway_tuning: Record<string, unknown>;
-  oauth_settings: Record<string, unknown>;
-  integration_settings: Record<string, unknown>;
-  config_sources?: Record<string, string>;
-  updated_at?: string;
-  updated_by_user_id?: string | null;
-}
-
-export interface PlatformRuntimeSettingsInput {
-  api_base_url?: string | null;
-  admin_frontend_url?: string | null;
-  cors_origins?: string[];
-  session_policy?: Record<string, unknown>;
-  payments_scheduler?: Record<string, unknown>;
-  ai_gateway_tuning?: Record<string, unknown>;
-  oauth_settings?: Record<string, unknown>;
-  integration_settings?: Record<string, unknown>;
-}
-
 export type PlatformStorageProviderType = 'ALIYUN_OSS' | 'S3' | 'R2';
 
 export interface PlatformStorageProviderConfig {
@@ -1159,26 +1132,6 @@ export interface PlatformStorageProviderInput {
     cdn_auth_key?: string;
   };
   notes?: string;
-}
-
-export interface PlatformIntegrationApiKeyItem {
-  id: string;
-  name: string;
-  key_prefix: string;
-  scopes: string[];
-  status: string;
-  last_used_at?: string | null;
-  expires_at?: string | null;
-  revoked_at?: string | null;
-  created_at?: string;
-  updated_at?: string;
-  token?: string;
-}
-
-export interface PlatformIntegrationApiKeyInput {
-  name: string;
-  scopes?: string[];
-  expires_at?: string | null;
 }
 
 export interface PlatformSmtpProviderConfig {
@@ -3181,16 +3134,6 @@ export const platformApi = {
     return response.data;
   },
 
-  getRuntimeSettings: async (): Promise<PlatformRuntimeSettings> => {
-    const response = await apiClient.getClient().get('/platform-admin/runtime-settings');
-    return response.data?.data || response.data;
-  },
-
-  updateRuntimeSettings: async (payload: PlatformRuntimeSettingsInput): Promise<PlatformRuntimeSettings> => {
-    const response = await apiClient.getClient().patch('/platform-admin/runtime-settings', payload);
-    return response.data?.data || response.data;
-  },
-
   listStorageProviders: async (): Promise<{ items: PlatformStorageProviderItem[] }> => {
     const response = await apiClient.getClient().get('/platform-admin/storage/providers');
     return response.data?.data || response.data;
@@ -3213,21 +3156,6 @@ export const platformApi = {
 
   testStorageProvider: async (providerId: string) => {
     const response = await apiClient.getClient().post(`/platform-admin/storage/providers/${providerId}/test`);
-    return response.data?.data || response.data;
-  },
-
-  listIntegrationApiKeys: async (): Promise<{ items: PlatformIntegrationApiKeyItem[] }> => {
-    const response = await apiClient.getClient().get('/platform-admin/integration-api-keys');
-    return response.data?.data || response.data;
-  },
-
-  createIntegrationApiKey: async (payload: PlatformIntegrationApiKeyInput): Promise<PlatformIntegrationApiKeyItem> => {
-    const response = await apiClient.getClient().post('/platform-admin/integration-api-keys', payload);
-    return response.data?.data || response.data;
-  },
-
-  revokeIntegrationApiKey: async (apiKeyId: string): Promise<PlatformIntegrationApiKeyItem> => {
-    const response = await apiClient.getClient().post(`/platform-admin/integration-api-keys/${apiKeyId}/revoke`);
     return response.data?.data || response.data;
   },
 

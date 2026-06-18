@@ -2,7 +2,7 @@
 
 ## 目标
 
-Runtime Settings 负责把原本散落在 `.env` 中的业务配置迁入管理员 UI 和数据库，让环境变量保持极简。
+Runtime Settings 负责把原本散落在 `.env` 中的业务配置迁入数据库和专用管理入口，让环境变量保持极简。
 
 ## 配置分层
 
@@ -54,15 +54,17 @@ code defaults
 
 ## UI 入口
 
-统一入口：`平台设置`
+不保留统一的“平台设置”大页。运行时配置按业务域放进专用页面或内部运维接口：
 
-- 基础：域名、API 根地址、CORS。
-- 安全：session、集成 API key、密钥轮换。
-- 登录方式：OAuth provider。
-- 支付方式：支付 provider。
-- 对象存储：bucket、endpoint、CDN。
-- 邮件与消息：SMTP、Email provider、SMS、Push。
-- AI 高级设置：并发、RPM、timeout、fallback。
+- 登录凭证：OAuth provider、Apple / Google / GitHub / WeChat 凭证。
+- 支付方式：支付 provider、支付密钥和链路测试。
+- 对象存储：bucket、endpoint、CDN 和默认 provider。
+- 邮件服务：SMTP、Cloudflare Email、发件身份和投递批次。
+- 短信服务：短信供应商、签名、模板和发送事件。
+- AI：供应商、模型、调用统计和调试入口。
+- 开发者授权：SDK、Codex、本地开发工具和集成授权。
+
+`platform_runtime_settings` 仍是 CORS、session policy、支付调度、AI tuning、OAuth 默认项和集成默认行为的 DB 真值；这些低频或高风险字段默认通过后端 API、迁移脚本或后续更窄的专用页面维护。
 
 ## API 约定
 

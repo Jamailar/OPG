@@ -13,7 +13,7 @@
 | **Bootstrap vs Runtime** | 连不上 DB 之前必须有的 → 环境变量；连上 DB 后可加载的 → Web / DB |
 | **Secret 分层** | JWT、出站代理加密、邮件哈希各自独立密钥；禁止 fallback 到 `JWT_SECRET_KEY` |
 | **单一真相源** | 同一配置只保留一条链路：Web 配置 > 环境变量（过渡期）> 代码默认值 |
-| **平台级 vs 租户级** | 全局支付/OSS/平台 URL → 平台设置；OAuth/回调 → 租户 `app_settings` |
+| **平台级 vs 租户级** | 全局支付/OSS/平台 URL → 专用管理页或 Runtime Settings API；OAuth/回调 → 租户 `app_settings` |
 | **可观测** | 启动日志打印「配置来源摘要」：哪些模块走 DB、哪些仍靠 env fallback |
 
 ---
@@ -111,9 +111,9 @@ flowchart LR
 
 **Web 改动（小）**：
 
-- 租户工作区 / 平台设置：增加「API 根 URL」「用户 Web URL」「CORS 允许来源」字段（写入 `app_settings.extra_json` 或新表）
+- 租户工作区 / 内部运行时配置：增加「API 根 URL」「用户 Web URL」「CORS 允许来源」字段（写入 `app_settings.extra_json` 或新表）
 - 支付方式页：已有，补充「未配置时」引导文案
-- 支付调度：`PAYMENTS_AUTO_DEDUCTION_*` → 平台设置开关（写入 `platform_runtime_settings`）
+- 支付调度：`PAYMENTS_AUTO_DEDUCTION_*` → Runtime Settings API（写入 `platform_runtime_settings`）
 
 ### Phase 2 — 新建平台存储设置（2–3 周）
 
@@ -129,7 +129,7 @@ config_json_encrypted,  -- access_key, secret, bucket, endpoint, cdn_*
 created_at, updated_at
 ```
 
-**Web**：`平台设置 → 对象存储` 页面（与邮件服务页同级）
+**Web**：`对象存储` 页面（与邮件服务页同级）
 
 **代码**：`upload.service.ts` 从 DB 加载默认 provider，env `ALIYUN_*` 仅 dev fallback
 
@@ -153,7 +153,7 @@ email_secret_key_encrypted, -- 用主密钥加密存储
 updated_at
 ```
 
-**Web**：`平台设置 → 运行时` 单页表单
+**Web**：不保留运行时大表单；低频字段通过 Runtime Settings API 或更窄的专用页面维护
 
 可 Web 化 env：**~15 项**（含 CORS、JWT 时效、支付调度）
 

@@ -80,55 +80,37 @@ VITE_API_BASE_URL=https://api.example.com
 | 能力 | UI 位置 | DB 真值 | 当前 env/fallback |
 | --- | --- | --- | --- |
 | AI provider / 模型 | AI 源与模型 | `ai_sources`、`ai_model_source_routes` | 无业务 env |
-| 支付方式 | 平台设置 / 支付方式 | `platform_payment_methods.config_json` | 旧 `ALIPAY_*`、`WECHAT_PAY_*` 已停止读取 |
-| 支付 URL | 平台设置 / 域名与回调 | `platform_runtime_settings` 或 `app_settings.extra_json` | 旧 `API_BASE_URL`、`USER_WEB_BASE_URL` 已停止读取 |
-| 对象存储 | 平台设置 / 对象存储 | `platform_storage_providers.config_json` + `secret_json_encrypted` | 旧 `ALIYUN_*`、`ALIYUN_OSS_*` 已停止读取 |
-| 邮件 | 平台设置 / 邮件服务 | `platform_smtp_providers.config_json` + `secret_json_encrypted` | 旧 `SMTP_*`、`SENDER_*` 已停止读取 |
-| OAuth | 平台设置 / 登录方式 | `platform_runtime_settings.oauth_settings_json`，后续可拆 `oauth_provider_clients` | 旧 `WECHAT_AUTH_*` 已停止读取 |
-| 集成默认行为 | 平台设置 / 集成配置 | `platform_runtime_settings.integration_settings_json` | 旧 `FEEDBACK_ADMIN_API_ACTOR_USER_ID` 已停止读取 |
-| Apple IAP / Login | 平台设置 / Apple | `apple_login_credentials` + `platform_payment_methods.config_json` | 旧 `APPLE_ROOT_CERTIFICATES_PEM` 已停止读取 |
-| 反馈/集成 API key | 平台设置 / 集成密钥 | `platform_api_keys` | 旧 `FEEDBACK_ADMIN_API_KEY` 已停止读取 |
-| CORS | 平台设置 / 域名与安全 | `platform_runtime_settings.cors_origins` | `CORS_*` |
-| AI 调优 | 平台设置 / AI 高级设置 | `platform_runtime_settings.ai_gateway_tuning_json` | 旧 `AI_GATEWAY_*`、Minimax/OpenRouter 调优 env 已停止读取 |
-| 支付调度 | 平台设置 / 支付任务 | `platform_runtime_settings.payments_scheduler_json` | 旧 `PAYMENTS_AUTO_DEDUCTION_*` 已停止读取 |
+| 支付方式 | 支付方式 | `platform_payment_methods.config_json` | 旧 `ALIPAY_*`、`WECHAT_PAY_*` 已停止读取 |
+| 支付 URL | 租户工作区 / 内部运行时配置 | `platform_runtime_settings` 或 `app_settings.extra_json` | 旧 `API_BASE_URL`、`USER_WEB_BASE_URL` 已停止读取 |
+| 对象存储 | 对象存储 | `platform_storage_providers.config_json` + `secret_json_encrypted` | 旧 `ALIYUN_*`、`ALIYUN_OSS_*` 已停止读取 |
+| 邮件 | 邮件服务 | `platform_smtp_providers.config_json` + `secret_json_encrypted` | 旧 `SMTP_*`、`SENDER_*` 已停止读取 |
+| OAuth | 登录凭证 | `platform_runtime_settings.oauth_settings_json`，后续可拆 `oauth_provider_clients` | 旧 `WECHAT_AUTH_*` 已停止读取 |
+| 集成默认行为 | 内部运行时配置 | `platform_runtime_settings.integration_settings_json` | 旧 `FEEDBACK_ADMIN_API_ACTOR_USER_ID` 已停止读取 |
+| Apple IAP / Login | 登录凭证 / 支付方式 | `apple_login_credentials` + `platform_payment_methods.config_json` | 旧 `APPLE_ROOT_CERTIFICATES_PEM` 已停止读取 |
+| 反馈/集成 API key | 开发者授权 / 内部集成 API | `platform_api_keys` | 旧 `FEEDBACK_ADMIN_API_KEY` 已停止读取 |
+| CORS | 内部运行时配置 | `platform_runtime_settings.cors_origins` | `CORS_*` |
+| AI 调优 | AI | `platform_runtime_settings.ai_gateway_tuning_json` | 旧 `AI_GATEWAY_*`、Minimax/OpenRouter 调优 env 已停止读取 |
+| 支付调度 | Jobs / 内部运行时配置 | `platform_runtime_settings.payments_scheduler_json` | 旧 `PAYMENTS_AUTO_DEDUCTION_*` 已停止读取 |
 
 ## 管理员 UI 信息架构
 
-只增加一个一级入口：`平台设置`。不要为每个 provider 增加散乱入口。
+不保留统一的“平台设置”大页。管理员 UI 按真实工作域拆到少量专用入口，低频 JSON 运行时参数留在后端 API 或运维脚本里。
 
 ```text
-平台设置
-  基础
-    平台域名
-    API 根地址
-    管理后台地址
-    CORS 允许来源
-  安全
-    Session 时效
-    集成 API key
-    密钥轮换状态
-  登录方式
-    OAuth provider
-    Apple / Google / GitHub / WeChat
-  支付方式
-    Alipay
-    WeChat Pay
-    Apple IAP
-    Stripe
-  对象存储
-    Ali OSS
-    S3 / R2
-    CDN
-  邮件与消息
-    SMTP
-    Cloudflare Email
-    SMS
-    Push
-  AI 高级设置
-    并发
-    RPM
-    Timeout
-    Fallback
+登录凭证
+  Apple / Google / GitHub / WeChat
+支付方式
+  Alipay / WeChat Pay / Apple IAP / Stripe
+对象存储
+  Ali OSS / S3 / R2 / CDN
+邮件服务
+  SMTP / Cloudflare Email
+短信服务
+  provider / signature / template
+AI
+  provider / model / usage / playground
+开发者授权
+  SDK / Codex / integration grants
 ```
 
 UI 规则：
@@ -251,7 +233,7 @@ config.sources:
   - `GET /runtime-config`
 - 后端 CORS 启动逻辑已优先读取 DB 中的 `cors_origins_json`，没有 DB 配置时回退到 env。
 - 前端启动时会优先请求 `/runtime-config`，再回退到 `env.js` / `VITE_*`。
-- 管理后台已新增 `平台设置` 页面，用于维护 Runtime Settings。
+- 管理后台不再暴露统一 `平台设置` 页面；Runtime Settings 后端 API 保留为内部控制面。
 - `PLATFORM_SECRETS_KEY` 已成为新目标态主密钥名；旧 `OUTBOUND_PROXY_ENCRYPTION_KEY` 作为迁移兼容别名。
 - 新增 `platform_storage_providers` 表和对象存储 UI。Aliyun OSS、S3、Cloudflare R2 的 endpoint、bucket、region、CDN、AK/SK 已可由管理员配置；AK/SK 和 CDN auth key 使用 `PLATFORM_SECRETS_KEY` 加密入库。
 - 每个 bucket 保存为一条 provider 记录，可添加多个 bucket；`is_default` 全局只有一个，用于当前上传默认目标。
@@ -340,7 +322,7 @@ config.sources:
 1. 新增 `/runtime-config`，返回非密钥运行时配置。
 2. `apps/web` 启动时优先读取 `/runtime-config`，再回退到 `window.__APPADMIN_RUNTIME_CONFIG__`。
 3. `VITE_*` 只作为构建和本地开发 fallback。
-4. 线上文案不得要求管理员改 `.env` 来修业务配置；应该指向平台设置页。
+4. 线上文案不得要求管理员改 `.env` 来修业务配置；应该指向对应专用页面，或明确由运维通过 Runtime Settings API 处理。
 
 ## 迁移顺序
 

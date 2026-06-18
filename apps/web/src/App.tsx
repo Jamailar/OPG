@@ -22,7 +22,6 @@ import PlatformPaymentMethodsPage from '@/pages/platform/PlatformPaymentMethodsP
 import PlatformSmsServicesPage from '@/pages/platform/PlatformSmsServicesPage';
 import PlatformEmailServicePage from '@/pages/platform/PlatformEmailServicePage';
 import PlatformStorageSettingsPage from '@/pages/platform/PlatformStorageSettingsPage';
-import PlatformRuntimeSettingsPage from '@/pages/platform/PlatformRuntimeSettingsPage';
 import PlatformObservabilityPage from '@/pages/platform/PlatformObservabilityPage';
 import DeveloperAuthorizationsPage from '@/pages/platform/DeveloperAuthorizationsPage';
 import PlatformJobsPage from '@/pages/platform/PlatformJobsPage';
@@ -264,14 +263,7 @@ function App() {
             }
           />
 
-          <Route
-            path="/platform-admin/settings"
-            element={
-              <PlatformProtectedRoute>
-                <PlatformRuntimeSettingsPage />
-              </PlatformProtectedRoute>
-            }
-          />
+          <Route path="/platform-admin/settings" element={<Navigate to="/platform-admin/dashboard" replace />} />
 
           <Route
             path="/platform-admin/developer-authorizations"

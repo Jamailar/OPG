@@ -13,7 +13,7 @@
 - Sender 层：`email_senders.provider_id` 绑定供应商，支持一个供应商下多个发件邮箱，也支持全局或单租户发件邮箱。
 - App Settings 层：`app_email_settings` 只选择租户默认营销/通知发件邮箱，并保存退订、Reply-To、页脚等租户级设置。
 - Delivery 层：`email_campaigns` + `email_campaign_recipients` 维持现有队列、锁定、重试、退订和 bounce 抑制逻辑。
-- UI 层：`PlatformEmailServicePage.tsx` 按供应商分组显示发件邮箱；`PlatformRuntimeSettingsPage.tsx` 不再展示 SMTP 配置。
+- UI 层：`PlatformEmailServicePage.tsx` 按供应商分组显示发件邮箱；SMTP 配置不再进入运行时设置大表单。
 
 ## 1.2 实现边界
 - 必须用现成库：SMTP 使用 `nodemailer`，避免自研 SMTP 协议、TLS、认证和连接细节。

@@ -933,7 +933,7 @@ export default function TenantApiDocsPanel({ app }: Props) {
         <summary className="platform-section-head api-docs-module-head api-docs-feature-summary">
           <div>
             <h3>Bug issue API</h3>
-            <p>使用平台设置生成的集成密钥读取、更新、评论和评审当前 app 的反馈 issue。</p>
+            <p>使用平台集成密钥读取、更新、评论和评审当前 app 的反馈 issue。</p>
           </div>
           <div className="api-docs-module-meta">
             <span>Scope</span>
