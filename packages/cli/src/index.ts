@@ -57,11 +57,13 @@ async function main() {
     return;
   }
   if (command === 'manifest') {
-    console.log(JSON.stringify(await getClientFromFlags(args.slice(1)).sdk.manifest(), null, 2));
+    const client = await getClientFromLocalConfigWithFlagOverrides(parseFlags(args.slice(1)));
+    console.log(JSON.stringify(await client.sdk.manifest(), null, 2));
     return;
   }
   if (command === 'smoke') {
-    console.log(JSON.stringify(await getClientFromFlags(args.slice(1)).sdk.smokeTest(), null, 2));
+    const client = await getClientFromLocalConfigWithFlagOverrides(parseFlags(args.slice(1)));
+    console.log(JSON.stringify(await client.sdk.smokeTest(), null, 2));
     return;
   }
   if (command === 'db' || command === 'database') {
@@ -1090,10 +1092,6 @@ async function getPlatformClientFromConfig() {
   return createOpgPlatformClient(await readLocalConfig());
 }
 
-function getClientFromFlags(commandArgs: string[]) {
-  return createOpgClient(requireAppConfig(readConfigFromFlags(parseFlags(commandArgs)), 'Missing OPG app slug. Pass --app or set OPG_APP_SLUG.'));
-}
-
 async function getClientFromLocalConfigWithFlagOverrides(flags: Record<string, string>) {
   const local = await readOptionalLocalConfig();
   return createOpgClient(requireAppConfig({
@@ -1181,10 +1179,6 @@ async function readDotEnvLocal(): Promise<Record<string, string>> {
   } catch {
     return {};
   }
-}
-
-function readConfigFromFlags(flags: Record<string, string>): CliConfig {
-  return requireAppConfig(readBaseConfig(flags), 'Missing OPG app slug. Pass --app or set OPG_APP_SLUG.');
 }
 
 function readBaseConfig(flags: Record<string, string>): CliConfig {
