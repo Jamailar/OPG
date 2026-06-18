@@ -45,13 +45,6 @@ const navItems = [
     path: '/platform-admin/apps',
   },
   {
-    key: 'jobs',
-    icon: 'jobs',
-    label: 'Jobs',
-    desc: '长任务、队列与 worker',
-    path: '/platform-admin/jobs',
-  },
-  {
     key: 'login-credentials',
     icon: 'login',
     label: '登录凭证',
