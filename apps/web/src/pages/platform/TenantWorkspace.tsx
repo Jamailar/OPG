@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import {
   PlatformAppAiDefaultModelSlotItem,
   PlatformAppAiDefaultModelSlotKey,
@@ -58,6 +59,8 @@ type Message = { type: 'success' | 'error'; text: string } | null;
 type WorkspaceSection = 'overview' | 'analytics' | 'ai-usage' | 'api-docs' | 'developers' | 'admins' | 'ai-routing' | 'site' | 'email' | 'feedback' | 'acquisition' | 'redeem';
 type RedeemSubPage = 'products' | 'product-create' | 'orders' | 'code-batches' | 'code-create' | 'codes' | 'redemptions';
 type ManualGrantIdentityType = 'email' | 'user_id' | 'phone';
+type AppModelCapabilityFilter = 'ALL' | PlatformAppAiModelRouteItem['model']['capability'] | 'voice_clone';
+type AppModelSortMode = 'newest' | 'name' | 'provider';
 
 interface AdminCreateForm {
   email: string;
@@ -183,6 +186,17 @@ const DEFAULT_MODEL_SLOT_META: Array<{
   { key: 'video_reference_to_video', label: '生视频：参考生视频', capabilities: ['video'] },
 ];
 
+const APP_MODEL_CATALOG_TABS: Array<{ value: AppModelCapabilityFilter; label: string }> = [
+  { value: 'ALL', label: '全部' },
+  { value: 'chat', label: 'Text' },
+  { value: 'image', label: 'Image' },
+  { value: 'embedding', label: 'Embeddings' },
+  { value: 'tts', label: 'Speech' },
+  { value: 'stt', label: 'Transcription' },
+  { value: 'video', label: 'Video' },
+  { value: 'voice_clone', label: 'Voice Clone' },
+];
+
 const createEmptyDefaultModelSlotDrafts = (): DefaultModelSlotDrafts =>
   DEFAULT_MODEL_SLOT_META.reduce((acc, item) => {
     acc[item.key] = { primary_model_id: '', fallback_model_id: '' };
@@ -269,6 +283,8 @@ const EMPTY_ACQUISITION_OPTION_FORM: AcquisitionOptionForm = {
   allow_free_text: false,
   is_active: true,
 };
+
+const ACQUISITION_CHART_COLORS = ['#111827', '#2563EB', '#16A34A', '#F59E0B', '#DC2626', '#7C3AED', '#0891B2', '#DB2777'];
 
 type OAuthProvider = 'wechat' | 'google' | 'github';
 
@@ -361,11 +377,59 @@ function formatCurrencyCny(value?: number | null) {
   return `¥${Number(value || 0).toFixed(2)}`;
 }
 
+function formatAppModelPrice(model: PlatformAppAiModelRouteItem['model']) {
+  if (model.pricing_mode === 'per_minute') {
+    return `¥${Number(model.rmb_per_minute || 0).toFixed(4)} / min`;
+  }
+  if (model.pricing_mode === 'per_call') {
+    const unit = model.capability === 'image' ? 'image' : 'call';
+    return `¥${Number(model.rmb_per_call || 0).toFixed(4)} / ${unit}`;
+  }
+  if (model.pricing_mode === 'per_mchar') {
+    return `¥${Number(model.rmb_per_mtoken || 0).toFixed(4)} / 1M chars`;
+  }
+  return `¥${Number(model.rmb_per_mtoken || 0).toFixed(4)} / 1M tokens`;
+}
+
+function formatAppModelPoints(model: PlatformAppAiModelRouteItem['model']) {
+  if (model.pricing_mode === 'per_minute') {
+    return `${Number(model.points_per_minute || 0).toFixed(2)} points / min`;
+  }
+  if (model.pricing_mode === 'per_call') {
+    const unit = model.capability === 'image' ? 'image' : 'call';
+    return `${Number(model.points_per_call || 0).toFixed(2)} points / ${unit}`;
+  }
+  if (model.pricing_mode === 'per_mchar') {
+    return `${Number(model.points_per_call || 0).toFixed(2)} points / 100 chars`;
+  }
+  return `${Number(model.points_per_mtoken || 0).toFixed(2)} points / 1M tokens`;
+}
+
 function formatDateTime(value?: string | Date | null) {
   if (!value) return '-';
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return '-';
   return parsed.toLocaleString();
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function formatJsonValue(value: unknown) {
+  try {
+    return JSON.stringify(value ?? {}, null, 2);
+  } catch {
+    return String(value ?? '');
+  }
+}
+
+function formatFeedbackValue(value: unknown) {
+  if (value === null || value === undefined || value === '') return '-';
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'string') return value;
+  return formatJsonValue(value);
 }
 
 function formatPackageSize(bytes: number) {
@@ -609,6 +673,9 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
   const [aiSources, setAiSources] = useState<PlatformAiSourceItem[]>([]);
   const [modelRoutes, setModelRoutes] = useState<PlatformAppAiModelRouteItem[]>([]);
   const [modelVisibilitySaving, setModelVisibilitySaving] = useState('');
+  const [modelRouteQuery, setModelRouteQuery] = useState('');
+  const [modelRouteCapabilityFilter, setModelRouteCapabilityFilter] = useState<AppModelCapabilityFilter>('ALL');
+  const [modelRouteSortMode, setModelRouteSortMode] = useState<AppModelSortMode>('newest');
   const [defaultModelSlots, setDefaultModelSlots] = useState<PlatformAppAiDefaultModelSlotItem[]>([]);
   const [defaultModelSlotDrafts, setDefaultModelSlotDrafts] = useState<DefaultModelSlotDrafts>(() =>
     createEmptyDefaultModelSlotDrafts(),
@@ -669,6 +736,7 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
   const [selectedFeedback, setSelectedFeedback] = useState<PlatformAppFeedbackItem | null>(null);
   const [feedbackComments, setFeedbackComments] = useState<PlatformAppFeedbackComment[]>([]);
   const [feedbackDetailLoading, setFeedbackDetailLoading] = useState(false);
+  const [feedbackDetailOpen, setFeedbackDetailOpen] = useState(false);
   const [feedbackNote, setFeedbackNote] = useState('');
   const [feedbackCommentBody, setFeedbackCommentBody] = useState('');
   const [feedbackCommentInternal, setFeedbackCommentInternal] = useState(false);
@@ -678,6 +746,7 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
   const [acquisitionUsersTotal, setAcquisitionUsersTotal] = useState(0);
   const [acquisitionLoading, setAcquisitionLoading] = useState(false);
   const [acquisitionSaving, setAcquisitionSaving] = useState(false);
+  const [acquisitionFormManagerOpen, setAcquisitionFormManagerOpen] = useState(false);
   const [acquisitionEditingId, setAcquisitionEditingId] = useState('');
   const [acquisitionOptionForm, setAcquisitionOptionForm] = useState<AcquisitionOptionForm>(EMPTY_ACQUISITION_OPTION_FORM);
   const [acquisitionSourceFilter, setAcquisitionSourceFilter] = useState('');
@@ -754,6 +823,71 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
     () => modelRoutes.filter((route) => route.app_visibility?.effective_is_visible !== false).length,
     [modelRoutes],
   );
+
+  const appModelCatalogTabCounts = useMemo(() => {
+    const counts = APP_MODEL_CATALOG_TABS.reduce((acc, item) => {
+      acc[item.value] = 0;
+      return acc;
+    }, {} as Record<AppModelCapabilityFilter, number>);
+    modelRoutes.forEach((route) => {
+      counts.ALL += 1;
+      const isVoiceClone = isVoiceCloneApiType(route.model.api_type);
+      if (isVoiceClone) {
+        counts.voice_clone += 1;
+        return;
+      }
+      counts[route.model.capability] += 1;
+    });
+    return counts;
+  }, [modelRoutes]);
+
+  const filteredModelRoutes = useMemo(() => {
+    const query = modelRouteQuery.trim().toLowerCase();
+    return [...modelRoutes]
+      .filter((route) => {
+        const isVoiceClone = isVoiceCloneApiType(route.model.api_type);
+        if (modelRouteCapabilityFilter === 'voice_clone' && !isVoiceClone) return false;
+        if (modelRouteCapabilityFilter !== 'ALL' && modelRouteCapabilityFilter !== 'voice_clone' && route.model.capability !== modelRouteCapabilityFilter) return false;
+        if (!query) return true;
+        return (
+          route.model.model_key.toLowerCase().includes(query)
+          || String(route.model.display_name || '').toLowerCase().includes(query)
+          || String(route.model.upstream_model || '').toLowerCase().includes(query)
+          || String(route.default_source.name || '').toLowerCase().includes(query)
+          || String(route.effective_source?.name || '').toLowerCase().includes(query)
+        );
+      })
+      .sort((left, right) => {
+        if (modelRouteSortMode === 'newest') {
+          const leftTime = new Date(left.app_visibility?.updated_at || left.override?.updated_at || 0).getTime();
+          const rightTime = new Date(right.app_visibility?.updated_at || right.override?.updated_at || 0).getTime();
+          if (leftTime !== rightTime) return rightTime - leftTime;
+        }
+        if (modelRouteSortMode === 'provider') {
+          const sourceCompare = String(left.effective_source?.name || left.default_source.name || '').localeCompare(
+            String(right.effective_source?.name || right.default_source.name || ''),
+          );
+          if (sourceCompare !== 0) return sourceCompare;
+        }
+        return String(left.model.display_name || left.model.model_key).localeCompare(String(right.model.display_name || right.model.model_key));
+      });
+  }, [modelRoutes, modelRouteQuery, modelRouteCapabilityFilter, modelRouteSortMode]);
+
+  const acquisitionSourceChartData = useMemo(() => {
+    const rows = acquisitionSummary?.by_source || [];
+    const total = rows.reduce((sum, item) => sum + Number(item.users || item.submissions || 0), 0);
+    return rows
+      .filter((item) => Number(item.users || item.submissions || 0) > 0)
+      .map((item, index) => {
+        const value = Number(item.users || item.submissions || 0);
+        return {
+          ...item,
+          value,
+          percent: total > 0 ? Math.round((value / total) * 1000) / 10 : 0,
+          color: ACQUISITION_CHART_COLORS[index % ACQUISITION_CHART_COLORS.length],
+        };
+      });
+  }, [acquisitionSummary?.by_source]);
 
   const savedWechatOpenAppRefId = useMemo(
     () => String(appDetail?.settings?.wechat_open_app_ref_id || '').trim(),
@@ -1864,6 +1998,7 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
 
   const loadFeedbackDetail = async (feedbackId: string) => {
     if (!appId || !feedbackId) return;
+    setFeedbackDetailOpen(true);
     setFeedbackDetailLoading(true);
     try {
       const response = await platformApi.getAppFeedback(appId, feedbackId);
@@ -1877,6 +2012,18 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
     } finally {
       setFeedbackDetailLoading(false);
     }
+  };
+
+  const closeFeedbackDetail = () => {
+    if (feedbackActingId || feedbackDetailLoading) return;
+    setFeedbackDetailOpen(false);
+  };
+
+  const loadAdjacentFeedbackDetail = async (direction: -1 | 1) => {
+    const currentIndex = feedbackItems.findIndex((item) => item.id === selectedFeedbackId);
+    const nextItem = feedbackItems[currentIndex + direction];
+    if (!nextItem) return;
+    await loadFeedbackDetail(nextItem.id);
   };
 
   const updateFeedback = async (payload: Parameters<typeof platformApi.updateAppFeedback>[2]) => {
@@ -3555,57 +3702,106 @@ const agents = await opg.agents.list();`}</pre>
           <h3>AI 模型</h3>
           <span className="status-tag info">{visibleModelCount}/{modelRoutes.length} 展示</span>
         </div>
-        <div className="table-wrap">
-          <table className="platform-table">
-            <thead>
-              <tr>
-                <th>模型</th>
-                <th>能力</th>
-                <th>来源</th>
-                <th>状态</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {modelRoutes.map((route) => {
-                const appVisible = route.app_visibility?.is_visible !== false;
-                const globalVisible = route.app_visibility?.global_is_visible !== false;
-                const effectiveVisible = route.app_visibility?.effective_is_visible !== false;
-                const saving = modelVisibilitySaving === route.model_id;
-                return (
-                  <tr key={route.model_id}>
-                    <td>
-                      <strong>{route.model.display_name || route.model.model_key}</strong>
-                      <div className="muted">{route.model.model_key}</div>
-                    </td>
-                    <td>{route.model.capability}</td>
-                    <td>{route.effective_source?.name || route.default_source.name}</td>
-                    <td>
-                      <span className={`status-tag ${effectiveVisible ? 'success' : 'muted'}`}>
-                        {effectiveVisible ? '展示' : '隐藏'}
-                      </span>
-                      {!globalVisible && <span className="status-tag warning">全局隐藏</span>}
-                    </td>
-                    <td>
-                      <button
-                        className="btn btn-secondary btn-sm"
-                        type="button"
-                        disabled={saving || !globalVisible}
-                        onClick={() => toggleModelVisibility(route)}
-                      >
-                        {saving ? '保存中...' : appVisible ? '隐藏' : '展示'}
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-              {!modelRoutes.length && (
-                <tr>
-                  <td colSpan={5} className="empty-cell">暂无模型</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        <div className="ai-model-catalog-toolbar tenant-ai-model-toolbar">
+          <div className="ai-model-catalog-tabs" role="tablist" aria-label="模型能力分组">
+            {APP_MODEL_CATALOG_TABS.map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                role="tab"
+                aria-selected={modelRouteCapabilityFilter === item.value}
+                className={`ai-model-catalog-tab ${modelRouteCapabilityFilter === item.value ? 'active' : ''}`}
+                onClick={() => setModelRouteCapabilityFilter(item.value)}
+              >
+                <span>{item.label}</span>
+                <small>{appModelCatalogTabCounts[item.value] || 0}</small>
+              </button>
+            ))}
+          </div>
+          <div className="ai-model-catalog-controls">
+            <input
+              className="platform-filter-input"
+              value={modelRouteQuery}
+              onChange={(event) => setModelRouteQuery(event.target.value)}
+              placeholder="Search models..."
+            />
+            <select
+              value={modelRouteSortMode}
+              onChange={(event) => setModelRouteSortMode(event.target.value as AppModelSortMode)}
+            >
+              <option value="newest">Newest</option>
+              <option value="name">Name</option>
+              <option value="provider">Provider</option>
+            </select>
+            <div className="platform-filter-hint">共 {filteredModelRoutes.length} 个</div>
+          </div>
+        </div>
+
+        <div className="ai-model-directory-list tenant-ai-model-list">
+          {filteredModelRoutes.map((route) => {
+            const appVisible = route.app_visibility?.is_visible !== false;
+            const globalVisible = route.app_visibility?.global_is_visible !== false;
+            const effectiveVisible = route.app_visibility?.effective_is_visible !== false;
+            const saving = modelVisibilitySaving === route.model_id;
+            const isVoiceClone = isVoiceCloneApiType(route.model.api_type);
+            const capabilityLabel = isVoiceClone
+              ? 'Voice Clone'
+              : APP_MODEL_CATALOG_TABS.find((tab) => tab.value === route.model.capability)?.label || route.model.capability;
+            const sourceName = route.effective_source?.name || route.default_source.name;
+            return (
+              <article key={route.model_id} className={`ai-model-directory-row ${effectiveVisible ? '' : 'model-state-hidden'}`}>
+                <div className="ai-model-directory-main">
+                  <div className="ai-model-provider-mark" aria-hidden="true">
+                    {(sourceName || route.model.model_key).slice(0, 1).toUpperCase()}
+                  </div>
+                  <div className="ai-model-title-block">
+                    <div className="ai-model-title-line">
+                      <h4>{route.model.display_name || route.model.model_key}</h4>
+                      <span className="ai-model-capability-pill">{capabilityLabel}</span>
+                    </div>
+                    <p>
+                      <span>{route.model.model_key}</span>
+                      {route.model.upstream_model && route.model.upstream_model !== route.model.model_key ? (
+                        <>
+                          <span className="ai-model-meta-separator">|</span>
+                          <span>{route.model.upstream_model}</span>
+                        </>
+                      ) : null}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="ai-model-directory-meta">
+                  <span>by {sourceName || '-'}</span>
+                  <span>{route.model.execution_mode}</span>
+                  <span>{formatAppModelPrice(route.model)}</span>
+                  <span>{formatAppModelPoints(route.model)}</span>
+                  {route.override && <span>app override</span>}
+                </div>
+
+                <div className="ai-model-directory-side">
+                  <div className="ai-model-directory-status">
+                    <span className={`status-tag ${effectiveVisible ? 'success' : 'muted'}`}>
+                      {effectiveVisible ? '展示' : '隐藏'}
+                    </span>
+                    {!globalVisible && <span className="status-tag warning">全局隐藏</span>}
+                    {route.model.is_default && <span className="status-tag info">DEFAULT</span>}
+                  </div>
+                  <div className="ai-model-directory-actions">
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      type="button"
+                      disabled={saving || !globalVisible}
+                      onClick={() => toggleModelVisibility(route)}
+                    >
+                      {saving ? '保存中...' : appVisible ? '隐藏' : '展示'}
+                    </button>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+          {!filteredModelRoutes.length && <div className="ai-hub-empty">没有匹配的模型</div>}
         </div>
       </section>
 
@@ -3879,7 +4075,22 @@ const agents = await opg.agents.list();`}</pre>
     </div>
   );
 
-  const renderFeedback = () => (
+  const renderFeedback = () => {
+    const appIdForCli = appId || '<app-id>';
+    const selectedFeedbackIndex = feedbackItems.findIndex((item) => item.id === selectedFeedbackId);
+    const canOpenPreviousFeedback = selectedFeedbackIndex > 0 && !feedbackDetailLoading;
+    const canOpenNextFeedback = selectedFeedbackIndex >= 0 && selectedFeedbackIndex < feedbackItems.length - 1 && !feedbackDetailLoading;
+    const feedbackContext = isPlainRecord(selectedFeedback?.context) ? selectedFeedback.context : {};
+    const bugReport = isPlainRecord(feedbackContext.bug_report) ? feedbackContext.bug_report : null;
+    const bugClient = isPlainRecord(bugReport?.client) ? bugReport.client : {};
+    const bugAttachments = Array.isArray(bugReport?.attachments)
+      ? bugReport.attachments.filter((item): item is Record<string, unknown> => isPlainRecord(item))
+      : [];
+    const bugLogText = typeof bugReport?.log_text === 'string' ? bugReport.log_text : '';
+    const contextEntries = Object.entries(feedbackContext).filter(([key]) => key !== 'bug_report');
+    const totalPages = Math.max(Math.ceil(feedbackTotal / 20), 1);
+
+    return (
     <div className="platform-page tenant-feedback-page">
       <section className="card tenant-feedback-toolbar">
         <div className="platform-section-head">
@@ -3887,6 +4098,12 @@ const agents = await opg.agents.list();`}</pre>
           <button className="btn btn-secondary btn-sm" type="button" onClick={() => void loadFeedbackData()} disabled={feedbackLoading}>
             {feedbackLoading ? '刷新中...' : '刷新'}
           </button>
+        </div>
+        <div className="tenant-feedback-cli-guide">
+          <code>{`opg platform feedbacks list --app-id ${appIdForCli} --status pending`}</code>
+          <code>{`opg platform feedbacks get --app-id ${appIdForCli} --feedback-id <id>`}</code>
+          <code>{`opg platform feedbacks update --app-id ${appIdForCli} --feedback-id <id> --json '{"status":"in_progress"}'`}</code>
+          <code>{`opg platform feedbacks comment --app-id ${appIdForCli} --feedback-id <id> --json '{"body":"已处理","is_internal":true}'`}</code>
         </div>
         <div className="tenant-feedback-summary">
           <button
@@ -3965,9 +4182,8 @@ const agents = await opg.agents.list();`}</pre>
         </div>
       </section>
 
-      <div className="tenant-feedback-workbench">
-        <section className="card tenant-feedback-list-panel">
-          <div className="platform-section-head"><h3>反馈队列</h3></div>
+      <section className="card tenant-feedback-list-panel">
+          <div className="platform-section-head"><h3>反馈列表</h3></div>
           {feedbackLoading ? <div className="loading">加载中...</div> : null}
           {!feedbackLoading && !feedbackItems.length ? <div className="loading">暂无反馈</div> : null}
           {!feedbackLoading && feedbackItems.length ? (
@@ -3998,19 +4214,42 @@ const agents = await opg.agents.list();`}</pre>
             <button className="btn btn-secondary btn-sm" disabled={feedbackPage <= 1} onClick={() => setFeedbackPage((p) => Math.max(1, p - 1))}>
               上一页
             </button>
-            <span>第 {feedbackPage} 页 / 共 {Math.max(Math.ceil(feedbackTotal / 20), 1)} 页</span>
+            <span>第 {feedbackPage} 页 / 共 {totalPages} 页</span>
             <button
               className="btn btn-secondary btn-sm"
-              disabled={feedbackPage >= Math.max(Math.ceil(feedbackTotal / 20), 1)}
+              disabled={feedbackPage >= totalPages}
               onClick={() => setFeedbackPage((p) => p + 1)}
             >
               下一页
             </button>
           </div>
-        </section>
+      </section>
 
-        <section className="card tenant-feedback-detail-panel">
-          <div className="platform-section-head"><h3>反馈详情</h3></div>
+        {feedbackDetailOpen ? (
+        <div className="modal-overlay" onClick={closeFeedbackDetail}>
+          <section className="modal modal-lg tenant-feedback-detail-modal" onClick={(event) => event.stopPropagation()}>
+          <div className="tenant-feedback-modal-head">
+            <div>
+              <h3>反馈详情</h3>
+              {selectedFeedback ? (
+                <div className="tenant-feedback-modal-subtitle">
+                  <span>{selectedFeedbackIndex >= 0 ? `当前页 ${selectedFeedbackIndex + 1}/${feedbackItems.length}` : '当前页'}</span>
+                  <span>{selectedFeedback.id}</span>
+                </div>
+              ) : null}
+            </div>
+            <div className="btn-group">
+              <button className="btn btn-secondary btn-sm" type="button" disabled={!canOpenPreviousFeedback} onClick={() => void loadAdjacentFeedbackDetail(-1)}>
+                上一条
+              </button>
+              <button className="btn btn-secondary btn-sm" type="button" disabled={!canOpenNextFeedback} onClick={() => void loadAdjacentFeedbackDetail(1)}>
+                下一条
+              </button>
+              <button className="btn btn-secondary btn-sm" type="button" disabled={feedbackDetailLoading || Boolean(feedbackActingId)} onClick={closeFeedbackDetail}>
+                关闭
+              </button>
+            </div>
+          </div>
           {feedbackDetailLoading ? <div className="loading">加载中...</div> : null}
           {!feedbackDetailLoading && !selectedFeedback ? <div className="loading">选择一条反馈</div> : null}
           {selectedFeedback ? (
@@ -4023,12 +4262,14 @@ const agents = await opg.agents.list();`}</pre>
                   </span>
                   <span className="status-tag">{feedbackPriorityLabel(selectedFeedback.priority)}</span>
                   {selectedFeedback.reward_points ? <span className="status-tag success">+{selectedFeedback.reward_points}</span> : null}
+                  {selectedFeedback.category ? <span className="status-tag">{selectedFeedback.category}</span> : null}
                 </div>
               </div>
               <div className="tenant-feedback-content">{selectedFeedback.content}</div>
               <div className="tenant-feedback-user">
                 <span>{selectedFeedback.user_display_name || '-'}</span>
                 <strong>{selectedFeedback.user_email || selectedFeedback.user_id}</strong>
+                <span>提交 {formatDateTime(selectedFeedback.created_at)} · 更新 {formatDateTime(selectedFeedback.updated_at)}</span>
               </div>
               <div className="platform-form-grid compact">
                 <div className="form-group">
@@ -4084,6 +4325,63 @@ const agents = await opg.agents.list();`}</pre>
                   保存备注
                 </button>
               </div>
+              <div className="tenant-feedback-context">
+                <h4>日志与上下文</h4>
+                {bugReport ? (
+                  <div className="tenant-feedback-context-section">
+                    <div className="tenant-feedback-context-grid">
+                      <div><span>来源</span><strong>{formatFeedbackValue(bugReport.source)}</strong></div>
+                      <div><span>提交时间</span><strong>{formatDateTime(String(bugReport.submitted_at || ''))}</strong></div>
+                      <div><span>日志行数</span><strong>{formatFeedbackValue(bugReport.log_original_lines)}</strong></div>
+                      <div><span>日志字符</span><strong>{formatFeedbackValue(bugReport.log_original_chars)}</strong></div>
+                      <div><span>是否截断</span><strong>{formatFeedbackValue(bugReport.log_truncated)}</strong></div>
+                    </div>
+                    {Object.keys(bugClient).length ? (
+                      <div className="tenant-feedback-key-values">
+                        {Object.entries(bugClient).map(([key, value]) => (
+                          <div key={key}>
+                            <span>{key}</span>
+                            <strong>{formatFeedbackValue(value)}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    {bugAttachments.length ? (
+                      <div className="tenant-feedback-attachments">
+                        {bugAttachments.map((attachment, index) => {
+                          const url = String(attachment.url || '');
+                          const size = Number(attachment.size || 0);
+                          return (
+                            <a key={`${url}-${index}`} href={url || undefined} target="_blank" rel="noreferrer">
+                              <strong>{formatFeedbackValue(attachment.name) || `附件 ${index + 1}`}</strong>
+                              <span>{formatFeedbackValue(attachment.mime_type)} {formatPackageSize(size)}</span>
+                            </a>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                    {bugLogText ? <pre className="tenant-feedback-log">{bugLogText}</pre> : <div className="loading">未携带日志文本</div>}
+                  </div>
+                ) : null}
+                {contextEntries.length ? (
+                  <div className="tenant-feedback-key-values">
+                    {contextEntries.map(([key, value]) => (
+                      <div key={key}>
+                        <span>{key}</span>
+                        <strong>{formatFeedbackValue(value)}</strong>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {Object.keys(feedbackContext).length ? (
+                  <details className="tenant-feedback-context-raw">
+                    <summary>原始 context_json</summary>
+                    <pre>{formatJsonValue(feedbackContext)}</pre>
+                  </details>
+                ) : (
+                  <div className="loading">未携带额外上下文</div>
+                )}
+              </div>
               <div className="tenant-feedback-comments">
                 {feedbackComments.map((comment) => (
                   <div key={comment.id} className="tenant-feedback-comment">
@@ -4120,9 +4418,11 @@ const agents = await opg.agents.list();`}</pre>
             </div>
           ) : null}
         </section>
-      </div>
+        </div>
+      ) : null}
     </div>
-  );
+    );
+  };
 
   const renderSite = () => {
     const macos = siteSettings.downloads?.macos || {};
@@ -4791,14 +5091,19 @@ const agents = await opg.agents.list();`}</pre>
 
   const renderAcquisition = () => (
     <div className="platform-page">
-      <section className="card">
+      <section className="card acquisition-records-card">
         <div className="platform-section-head">
-          <h3>用户来源</h3>
-          <button className="btn btn-secondary btn-sm" type="button" onClick={() => void loadAcquisitionData()} disabled={acquisitionLoading}>
-            {acquisitionLoading ? '刷新中...' : '刷新'}
-          </button>
+          <h3>提交记录</h3>
+          <div className="platform-form-actions">
+            <button className="btn btn-secondary btn-sm" type="button" onClick={() => setAcquisitionFormManagerOpen(true)}>
+              表单管理
+            </button>
+            <button className="btn btn-secondary btn-sm" type="button" onClick={() => void loadAcquisitionData()} disabled={acquisitionLoading}>
+              {acquisitionLoading ? '刷新中...' : '刷新'}
+            </button>
+          </div>
         </div>
-        <div className="tenant-feedback-summary">
+        <div className="tenant-feedback-summary acquisition-record-summary">
           <button type="button" className="tenant-feedback-summary-card active">
             <span>已提交</span>
             <strong>{acquisitionSummary?.total || 0}</strong>
@@ -4807,130 +5112,69 @@ const agents = await opg.agents.list();`}</pre>
             <span>用户数</span>
             <strong>{acquisitionSummary?.users || 0}</strong>
           </button>
-          <button type="button" className="tenant-feedback-summary-card active">
+          <button type="button" className="tenant-feedback-summary-card active" onClick={() => setAcquisitionFormManagerOpen(true)}>
             <span>来源选项</span>
             <strong>{acquisitionOptions.length}</strong>
           </button>
         </div>
-      </section>
-
-      <div className="platform-grid-two tenants-layout">
-        <section className="card">
-          <div className="platform-section-head">
-            <h3>{acquisitionEditingId ? '编辑来源' : '新增来源'}</h3>
-            {acquisitionEditingId ? (
-              <button className="btn btn-secondary btn-sm" type="button" onClick={resetAcquisitionOptionForm}>
-                取消
-              </button>
-            ) : null}
+        <div className="acquisition-chart-panel">
+          <div className="acquisition-chart-frame">
+            {acquisitionLoading ? <div className="loading">加载中...</div> : null}
+            {!acquisitionLoading && !acquisitionSourceChartData.length ? <div className="loading">暂无提交记录</div> : null}
+            {!!acquisitionSourceChartData.length && (
+              <ResponsiveContainer width="100%" height={260}>
+                <PieChart>
+                  <Pie
+                    data={acquisitionSourceChartData}
+                    dataKey="value"
+                    nameKey="source_label"
+                    innerRadius={58}
+                    outerRadius={96}
+                    paddingAngle={2}
+                    stroke="#ffffff"
+                    strokeWidth={3}
+                  >
+                    {acquisitionSourceChartData.map((item) => (
+                      <Cell key={item.source_key} fill={item.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null;
+                      const row = payload[0]?.payload as (typeof acquisitionSourceChartData)[number];
+                      return (
+                        <div className="acquisition-chart-tooltip">
+                          <strong>{row.source_label}</strong>
+                          <span>{row.value} 人 · {row.percent}%</span>
+                        </div>
+                      );
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
           </div>
-          <form className="platform-form-grid compact" onSubmit={saveAcquisitionOption}>
-            <div className="form-group">
-              <label>来源标识</label>
-              <input
-                value={acquisitionOptionForm.key}
-                onChange={(event) => setAcquisitionOptionForm((prev) => ({ ...prev, key: event.target.value }))}
-                placeholder="xiaohongshu"
-                required
-              />
-            </div>
-            <div className="form-group">
-              <label>显示名称</label>
-              <input
-                value={acquisitionOptionForm.label}
-                onChange={(event) => setAcquisitionOptionForm((prev) => ({ ...prev, label: event.target.value }))}
-                placeholder="小红书"
-                required
-              />
-            </div>
-            <div className="form-group">
-              <label>排序</label>
-              <input
-                type="number"
-                min={0}
-                value={acquisitionOptionForm.sort_order}
-                onChange={(event) => setAcquisitionOptionForm((prev) => ({ ...prev, sort_order: event.target.value }))}
-              />
-            </div>
-            <div className="form-group">
-              <label className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={acquisitionOptionForm.is_active}
-                  onChange={(event) => setAcquisitionOptionForm((prev) => ({ ...prev, is_active: event.target.checked }))}
-                />
-                启用
-              </label>
-              <label className="checkbox-label" style={{ marginTop: 10 }}>
-                <input
-                  type="checkbox"
-                  checked={acquisitionOptionForm.allow_free_text}
-                  onChange={(event) => setAcquisitionOptionForm((prev) => ({ ...prev, allow_free_text: event.target.checked }))}
-                />
-                允许补充说明
-              </label>
-            </div>
-            <div className="platform-form-actions platform-form-span-2">
-              <button className="btn btn-sm" type="submit" disabled={acquisitionSaving}>
-                {acquisitionSaving ? '保存中...' : '保存来源'}
-              </button>
-            </div>
-          </form>
-
-          <div className="tenant-route-grid" style={{ marginTop: 12 }}>
-            {acquisitionOptions.map((item) => (
-              <article className="tenant-route-card" key={item.id}>
-                <div className="tenant-route-card-head">
-                  <div>
-                    <strong>{item.label}</strong>
-                    <span>{item.key}</span>
-                  </div>
-                  <span className={`status-tag ${item.is_active ? 'success' : ''}`}>{item.is_active ? '启用' : '停用'}</span>
-                </div>
-                <div className="tenant-route-card-meta">
-                  <span>排序 {item.sort_order}</span>
-                  <span>{item.allow_free_text ? '可填写说明' : '固定选项'}</span>
-                </div>
-                <div className="platform-form-actions">
-                  <button className="btn btn-secondary btn-sm" type="button" onClick={() => editAcquisitionOption(item)}>
-                    编辑
-                  </button>
-                  <button className="btn btn-secondary btn-sm" type="button" onClick={() => void removeAcquisitionOption(item)}>
-                    删除
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="card">
-          <div className="platform-section-head"><h3>来源统计</h3></div>
-          {acquisitionLoading ? <div className="loading">加载中...</div> : null}
-          {!acquisitionLoading && !(acquisitionSummary?.by_source || []).length ? <div className="loading">暂无提交记录</div> : null}
-          {!!acquisitionSummary?.by_source?.length && (
-            <div className="platform-detail">
-              {acquisitionSummary.by_source.map((item) => (
+          {!!acquisitionSourceChartData.length && (
+            <div className="acquisition-chart-legend">
+              {acquisitionSourceChartData.map((item) => (
                 <button
                   type="button"
                   key={item.source_key}
-                  className="platform-detail-row"
+                  className={`acquisition-legend-row ${acquisitionSourceFilter === item.source_key ? 'active' : ''}`}
                   onClick={() => {
-                    setAcquisitionSourceFilter(item.source_key);
+                    setAcquisitionSourceFilter((current) => (current === item.source_key ? '' : item.source_key));
                     setAcquisitionPage(1);
                   }}
                 >
+                  <span className="acquisition-legend-dot" style={{ background: item.color }} />
                   <span>{item.source_label}</span>
-                  <strong>{item.users} 人</strong>
+                  <strong>{item.value} 人</strong>
+                  <small>{item.percent}%</small>
                 </button>
               ))}
             </div>
           )}
-        </section>
-      </div>
-
-      <section className="card">
-        <div className="platform-section-head"><h3>提交记录</h3></div>
+        </div>
         <div className="tenant-feedback-filter-row">
           <input
             value={acquisitionQuery}
@@ -5006,6 +5250,107 @@ const agents = await opg.agents.list();`}</pre>
           </button>
         </div>
       </section>
+      {acquisitionFormManagerOpen && (
+        <div className="modal-overlay" onClick={acquisitionSaving ? undefined : () => setAcquisitionFormManagerOpen(false)}>
+          <section className="modal modal-lg acquisition-form-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="platform-section-head">
+              <h3>表单管理</h3>
+              <button className="btn btn-secondary btn-sm" type="button" onClick={() => setAcquisitionFormManagerOpen(false)} disabled={acquisitionSaving}>
+                关闭
+              </button>
+            </div>
+            <div className="acquisition-form-manager">
+              <form className="platform-form-grid compact" onSubmit={saveAcquisitionOption}>
+                <div className="platform-section-head platform-form-span-2 acquisition-form-subhead">
+                  <h4>{acquisitionEditingId ? '编辑来源' : '新增来源'}</h4>
+                  {acquisitionEditingId ? (
+                    <button className="btn btn-secondary btn-sm" type="button" onClick={resetAcquisitionOptionForm}>
+                      取消
+                    </button>
+                  ) : null}
+                </div>
+                <div className="form-group">
+                  <label>来源标识</label>
+                  <input
+                    value={acquisitionOptionForm.key}
+                    onChange={(event) => setAcquisitionOptionForm((prev) => ({ ...prev, key: event.target.value }))}
+                    placeholder="xiaohongshu"
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label>显示名称</label>
+                  <input
+                    value={acquisitionOptionForm.label}
+                    onChange={(event) => setAcquisitionOptionForm((prev) => ({ ...prev, label: event.target.value }))}
+                    placeholder="小红书"
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label>排序</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={acquisitionOptionForm.sort_order}
+                    onChange={(event) => setAcquisitionOptionForm((prev) => ({ ...prev, sort_order: event.target.value }))}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={acquisitionOptionForm.is_active}
+                      onChange={(event) => setAcquisitionOptionForm((prev) => ({ ...prev, is_active: event.target.checked }))}
+                    />
+                    启用
+                  </label>
+                  <label className="checkbox-label" style={{ marginTop: 10 }}>
+                    <input
+                      type="checkbox"
+                      checked={acquisitionOptionForm.allow_free_text}
+                      onChange={(event) => setAcquisitionOptionForm((prev) => ({ ...prev, allow_free_text: event.target.checked }))}
+                    />
+                    允许补充说明
+                  </label>
+                </div>
+                <div className="platform-form-actions platform-form-span-2">
+                  <button className="btn btn-sm" type="submit" disabled={acquisitionSaving}>
+                    {acquisitionSaving ? '保存中...' : '保存来源'}
+                  </button>
+                </div>
+              </form>
+
+              <div className="tenant-route-grid acquisition-option-list">
+                {acquisitionOptions.map((item) => (
+                  <article className="tenant-route-card" key={item.id}>
+                    <div className="tenant-route-card-head">
+                      <div>
+                        <strong>{item.label}</strong>
+                        <span>{item.key}</span>
+                      </div>
+                      <span className={`status-tag ${item.is_active ? 'success' : ''}`}>{item.is_active ? '启用' : '停用'}</span>
+                    </div>
+                    <div className="tenant-route-card-meta">
+                      <span>排序 {item.sort_order}</span>
+                      <span>{item.allow_free_text ? '可填写说明' : '固定选项'}</span>
+                    </div>
+                    <div className="platform-form-actions">
+                      <button className="btn btn-secondary btn-sm" type="button" onClick={() => editAcquisitionOption(item)}>
+                        编辑
+                      </button>
+                      <button className="btn btn-secondary btn-sm" type="button" onClick={() => void removeAcquisitionOption(item)} disabled={acquisitionSaving}>
+                        删除
+                      </button>
+                    </div>
+                  </article>
+                ))}
+                {!acquisitionOptions.length && !acquisitionLoading ? <div className="loading">暂无来源选项</div> : null}
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 
