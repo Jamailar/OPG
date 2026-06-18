@@ -292,120 +292,118 @@ export default function AppTenants() {
             </div>
 
             <form onSubmit={handleSubmit} className="platform-form-grid">
-            <div className="form-group">
-              <label>应用 Slug</label>
-              <input
-                value={form.slug}
-                onChange={(event) => setForm((prev) => ({ ...prev, slug: event.target.value }))}
-                disabled={Boolean(editingId)}
-                placeholder="例如: demo-app"
-              />
-            </div>
-            <div className="form-group">
-              <label>应用名称</label>
-              <input
-                value={form.name}
-                onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-                placeholder="应用名称"
-              />
-            </div>
-            <div className="form-group">
-              <label>状态</label>
-              <select
-                value={form.status}
-                onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value as 'ACTIVE' | 'INACTIVE' }))}
-              >
-                <option value="ACTIVE">ACTIVE</option>
-                <option value="INACTIVE">INACTIVE</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label>品牌名称</label>
-              <input
-                value={form.brand_name}
-                onChange={(event) => setForm((prev) => ({ ...prev, brand_name: event.target.value }))}
-                placeholder="例如: Demo App"
-              />
-            </div>
-            <div className="form-group platform-form-span-2">
-              <label>应用 URL</label>
-              <input
-                value={form.app_url}
-                onChange={(event) => setForm((prev) => ({ ...prev, app_url: event.target.value }))}
-                placeholder="https://app.example.com"
-              />
-            </div>
-            <div className="form-group platform-form-span-2">
-              <label>邮件验证码说明</label>
-              <input
-                value={form.email_code_label}
-                onChange={(event) => setForm((prev) => ({ ...prev, email_code_label: event.target.value }))}
-                placeholder="例如：您正在使用 {app_name} 邮箱验证码。请使用以下验证码完成操作："
-              />
-            </div>
-            <div className="form-group">
-              <label>验证码失效说明</label>
-              <input
-                value={form.email_expire_text}
-                onChange={(event) => setForm((prev) => ({ ...prev, email_expire_text: event.target.value }))}
-                placeholder="例如：该验证码将在 10 分钟后失效。"
-              />
-            </div>
-            <div className="form-group">
-              <label>邮件页脚</label>
-              <input
-                value={form.email_footer_text}
-                onChange={(event) => setForm((prev) => ({ ...prev, email_footer_text: event.target.value }))}
-                placeholder="例如：© {app_name} · 此邮件由系统自动发送，请勿回复"
-              />
-            </div>
-            <div className="form-group platform-form-span-2">
-              <label>说明</label>
-              <div className="platform-filter-hint" style={{ alignSelf: 'center' }}>
-                微信登录应用选择与回调配置已迁移到应用工作区的「应用概览」内管理。
+              <div className="form-group">
+                <label>应用 Slug</label>
+                <input
+                  value={form.slug}
+                  onChange={(event) => setForm((prev) => ({ ...prev, slug: event.target.value }))}
+                  disabled={Boolean(editingId)}
+                  placeholder="例如: demo-app"
+                />
               </div>
-            </div>
-            <div className="form-group">
-              <label>业务后台域名</label>
-              <input
-                value={form.business_admin_domain}
-                onChange={(event) => setForm((prev) => ({ ...prev, business_admin_domain: event.target.value }))}
-                placeholder="admin.example.com"
-              />
-            </div>
-            <div className="form-group">
-              <label>平台后台域名</label>
-              <input
-                value={form.platform_admin_domain}
-                onChange={(event) => setForm((prev) => ({ ...prev, platform_admin_domain: event.target.value }))}
-                placeholder="platform-admin.example.com"
-              />
-            </div>
-            <div className="form-group">
-              <label>API 域名</label>
-              <input
-                value={form.api_domain}
-                onChange={(event) => setForm((prev) => ({ ...prev, api_domain: event.target.value }))}
-                placeholder="api.example.com"
-              />
-            </div>
-            <div className="form-group">
-              <label>用户端域名</label>
-              <input
-                value={form.user_web_domain}
-                onChange={(event) => setForm((prev) => ({ ...prev, user_web_domain: event.target.value }))}
-                placeholder="www.example.com"
-              />
-            </div>
+              <div className="form-group">
+                <label>应用名称</label>
+                <input
+                  value={form.name}
+                  onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
+                  placeholder="应用名称"
+                />
+              </div>
+              <div className="form-group">
+                <label>状态</label>
+                <select
+                  value={form.status}
+                  onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value as 'ACTIVE' | 'INACTIVE' }))}
+                >
+                  <option value="ACTIVE">ACTIVE</option>
+                  <option value="INACTIVE">INACTIVE</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>品牌名称</label>
+                <input
+                  value={form.brand_name}
+                  onChange={(event) => setForm((prev) => ({ ...prev, brand_name: event.target.value }))}
+                  placeholder="例如: Demo App"
+                />
+              </div>
+              <div className="form-group platform-form-span-2">
+                <label>应用 URL</label>
+                <input
+                  value={form.app_url}
+                  onChange={(event) => setForm((prev) => ({ ...prev, app_url: event.target.value }))}
+                  placeholder="https://app.example.com"
+                />
+              </div>
+              {editingId && (
+                <>
+                  <div className="form-group platform-form-span-2">
+                    <label>邮件验证码说明</label>
+                    <input
+                      value={form.email_code_label}
+                      onChange={(event) => setForm((prev) => ({ ...prev, email_code_label: event.target.value }))}
+                      placeholder="例如：您正在使用 {app_name} 邮箱验证码。请使用以下验证码完成操作："
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>验证码失效说明</label>
+                    <input
+                      value={form.email_expire_text}
+                      onChange={(event) => setForm((prev) => ({ ...prev, email_expire_text: event.target.value }))}
+                      placeholder="例如：该验证码将在 10 分钟后失效。"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>邮件页脚</label>
+                    <input
+                      value={form.email_footer_text}
+                      onChange={(event) => setForm((prev) => ({ ...prev, email_footer_text: event.target.value }))}
+                      placeholder="例如：© {app_name} · 此邮件由系统自动发送，请勿回复"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>业务后台域名</label>
+                    <input
+                      value={form.business_admin_domain}
+                      onChange={(event) => setForm((prev) => ({ ...prev, business_admin_domain: event.target.value }))}
+                      placeholder="admin.example.com"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>平台后台域名</label>
+                    <input
+                      value={form.platform_admin_domain}
+                      onChange={(event) => setForm((prev) => ({ ...prev, platform_admin_domain: event.target.value }))}
+                      placeholder="platform-admin.example.com"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>API 域名</label>
+                    <input
+                      value={form.api_domain}
+                      onChange={(event) => setForm((prev) => ({ ...prev, api_domain: event.target.value }))}
+                      placeholder="api.example.com"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>用户端域名</label>
+                    <input
+                      value={form.user_web_domain}
+                      onChange={(event) => setForm((prev) => ({ ...prev, user_web_domain: event.target.value }))}
+                      placeholder="www.example.com"
+                    />
+                  </div>
+                </>
+              )}
 
-            <div className="platform-form-actions platform-form-span-2">
-              <button className="btn" type="submit" disabled={saving}>
-                {saving ? '保存中...' : currentAction}
-              </button>
-              <button type="button" className="btn btn-secondary" onClick={closeForm}>
-                取消
-              </button>
-            </div>
+              <div className="platform-form-actions platform-form-span-2">
+                <button className="btn" type="submit" disabled={saving}>
+                  {saving ? '保存中...' : currentAction}
+                </button>
+                <button type="button" className="btn btn-secondary" onClick={closeForm}>
+                  取消
+                </button>
+              </div>
             </form>
           </section>
         </div>

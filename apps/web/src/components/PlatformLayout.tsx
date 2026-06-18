@@ -280,10 +280,7 @@ export default function PlatformLayout({ children }: PlatformLayoutProps) {
             {isTenantWorkspace ? (
               <span>租户应用工作区</span>
             ) : (
-              <>
-                <span>平台管理台</span>
-                <span>当前应用：{runtimeContext.appSlug}</span>
-              </>
+              <span>平台管理台</span>
             )}
           </div>
           <div className="platform-header-user">

@@ -442,9 +442,30 @@ export class PlatformAdminService implements OnModuleInit {
     ]);
   }
 
+  private platformAppSlug() {
+    const slug = String(this.config.app.platformSlug || 'platform')
+      .trim()
+      .toLowerCase();
+    return slug || 'platform';
+  }
+
+  private isPlatformAppSlug(slug: unknown) {
+    return String(slug || '').trim().toLowerCase() === this.platformAppSlug();
+  }
+
+  private assertTenantSlugAllowed(slug: string) {
+    if (this.isPlatformAppSlug(slug)) {
+      throw new BadRequestException('platform app slug is reserved');
+    }
+  }
+
   async listApps(includeInactive = true) {
+    const where: Prisma.AppWhereInput = {
+      slug: { not: this.platformAppSlug() },
+      ...(includeInactive ? {} : { status: AppStatus.ACTIVE }),
+    };
     const apps = await this.prisma.app.findMany({
-      where: includeInactive ? {} : { status: AppStatus.ACTIVE },
+      where,
       include: {
         domains: true,
         settings: true,
@@ -1647,6 +1668,9 @@ export class PlatformAdminService implements OnModuleInit {
     if (!app) {
       throw new NotFoundException('App not found');
     }
+    if (this.isPlatformAppSlug(app.slug)) {
+      throw new NotFoundException('App not found');
+    }
     const aliasMap = await this.listSlugAliasesForApps([app.id]);
     return this.serializeApp({ ...app, slugAliases: aliasMap.get(app.id) || [] });
   }
@@ -1656,6 +1680,7 @@ export class PlatformAdminService implements OnModuleInit {
     if (!slug) {
       throw new BadRequestException('slug is required');
     }
+    this.assertTenantSlugAllowed(slug);
     const name = String(payload.name || '').trim();
     if (!name) {
       throw new BadRequestException('name is required');
@@ -3426,6 +3451,9 @@ export class PlatformAdminService implements OnModuleInit {
     if (!app) {
       throw new NotFoundException('App not found');
     }
+    if (this.isPlatformAppSlug(app.slug)) {
+      throw new NotFoundException('App not found');
+    }
     return app;
   }
 
@@ -4716,6 +4744,7 @@ export class PlatformAdminService implements OnModuleInit {
       if (alias === 'api') {
         throw new BadRequestException('api 不能作为路由标识');
       }
+      this.assertTenantSlugAllowed(alias);
     }
     return uniqueAliases;
   }
