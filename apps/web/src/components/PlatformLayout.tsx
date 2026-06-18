@@ -203,7 +203,7 @@ export default function PlatformLayout({ children }: PlatformLayoutProps) {
         <aside className={`platform-sidebar ${mobileOpen ? 'open' : ''}`}>
           <div className="platform-brand">
             <div className="platform-brand-logo">
-              <AppBrandMark size={40} />
+              <AppBrandMark size={40} variant="white" />
             </div>
             <div className="platform-brand-text">
               <h2>OPG</h2>

@@ -1,10 +1,12 @@
 interface IconProps {
   className?: string;
   size?: number;
+  variant?: 'default' | 'white';
 }
 
-export function AppBrandMark({ className, size = 44 }: IconProps) {
+export function AppBrandMark({ className, size = 44, variant = 'default' }: IconProps) {
   const classes = className ? `app-brand-mark ${className}` : 'app-brand-mark';
+  const src = variant === 'white' ? '/opg-logo-white.png' : '/opg-logo.png';
 
   return (
     <img
@@ -13,7 +15,7 @@ export function AppBrandMark({ className, size = 44 }: IconProps) {
       className={classes}
       draggable={false}
       height={size}
-      src="/opg-logo.png"
+      src={src}
       style={{ objectFit: 'contain' }}
       width={size}
     />
