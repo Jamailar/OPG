@@ -1,8 +1,28 @@
 # 一人集团系统
 
-一人集团系统是一个前后端分离的 app 后端集群控制平面，目标是让一人公司能快速搭建多个 app 的认证、租户、配置、AI、视频、消息、支付、用量、审计和开发者接入能力。
+一人集团系统是一个前后端分离的 app 后端集群控制平面，目标是让一人公司能快速搭建多个 app 的认证、租户、配置、AI、视频、消息、支付、用量、审计和开发者接入能力，少重复造后端。
 
 它不是通用 BaaS clone。OPG 吸收 Appwrite 的 Auth、Storage、Functions、Realtime、Messaging、自托管、SDK 和 API 组织方式，但产品核心是面向一人公司的多 app 运营后台、AI/视频供应商治理、成本账本和 agent 友好的开发者接口。
+
+## 核心定位
+
+OPG 要覆盖 app 后端的常用能力，让使用者把精力放在产品、内容、增长和业务规则上，而不是反复搭认证、上传、AI 代理、视频任务、支付回调、短信邮件、审计日志和管理后台。
+
+接入方式以 CLI 为第一入口。用户和 AI agent 都可以直接通过 `@jamba/opg-cli` 操作后端：创建 app、登录授权、读取 manifest、跑 smoke test、查询数据库工作区、提交 AI/视频任务、查看用量和管理平台配置。Codex 可通过 `opg codex install` 生成 MCP 配置；Claude Code、Hermes、OpenClaw 等主流 agent 工具，以及任何支持命令行、stdio MCP、OpenAPI 或 TypeScript SDK 的 AI 工具，都可以接入同一套 OPG 后端能力，不绑定某一个 agent 客户端。
+
+能力覆盖按完整 app 后端来设计：
+
+| 后端能力 | OPG 覆盖范围 | 使用者少做什么 |
+| --- | --- | --- |
+| 账号与权限 | 用户、租户、平台管理员、app 管理员、API key、Developer Grant | 不重复搭登录、JWT、权限矩阵和租户隔离 |
+| 配置与供应商 | Runtime Settings、OAuth、对象存储、AI、短信、邮件、支付、代理 IP | 不把业务配置散落在 env 和代码里 |
+| AI 与 Agent | OpenAI/Gemini 兼容 API、模型路由、provider 健康、成本账本、agent 运行入口 | 不重复封装多家 AI provider 和用量计费 |
+| 视频与长任务 | 文生视频、图生视频、翻译、retalk、结果代理、异步任务查询 | 不在业务 API 里硬塞长耗时视频处理 |
+| 存储与上传 | 文件上传、图片上传、对象存储 provider、presigned URL、站点资源 | 不重复做上传链路、文件归属和权限边界 |
+| 支付与权益 | 支付方式、订单、回调、Apple IAP、产品兑换、权益授予 | 不重复写支付状态机和服务端权益校验 |
+| 消息与通知 | 短信 provider、签名、模板、邮件 provider、发送事件 | 不重复接短信邮件供应商和失败追踪 |
+| 数据与运营 | 数据库工作区、行为分析、获客、发现、平台分析 | 不重复搭后台查询、运营指标和 app 数据入口 |
+| 可观测与审计 | request events、audit events、readyz、AI request events、provider health | 不靠日志猜问题，有可查询的审计真值 |
 
 ## 系统架构
 
@@ -35,7 +55,7 @@ packages/sdk
   opg-sdk，给用户 app 和 agent 调用 OPG 能力
 
 packages/cli
-  @jamba/opg-cli，负责项目初始化、smoke test、Codex MCP 安装和 stdio MCP server
+  @jamba/opg-cli，负责项目初始化、smoke test、平台操作、Codex MCP 安装和通用 stdio MCP server
 
 Infrastructure
   PostgreSQL：账户、租户、配置、任务、账本、审计真值
@@ -164,22 +184,24 @@ Infrastructure
 - 大文件输入应走对象存储 presigned URL，不把视频 base64 放进 JSON。
 - 前端只展示任务状态、错误原因、结果地址和重试动作。
 
-### 6. Agent / Developer SDK / Codex MCP
+### 6. Agent / Developer SDK / CLI / MCP
 
-负责把 OPG 能力暴露给用户项目、coding agent 和 Codex。
+负责把 OPG 能力暴露给用户项目、CLI、coding agent 和任意支持 MCP / OpenAPI / SDK 的 AI 工具。
 
 当前能力：
 
 - `opg-sdk`：运行时客户端，覆盖 manifest、AI、agents、upload、video、usage、database workspace。
-- `@jamba/opg-cli`：初始化项目、浏览器授权登录、smoke test、安装 Codex MCP、运行 stdio MCP server。
+- `@jamba/opg-cli`：初始化项目、浏览器授权登录、app 创建、平台配置、smoke test、数据库工作区、安装 Codex MCP、运行 stdio MCP server。
 - 后端 SDK API：`/:app/v1/sdk/manifest`、`openapi.json`、examples、smoke-test、install-profile、database workspace。
 - MCP 工具：manifest、AI models、agent run、video submit/query、usage recent、database query/execute。
+- Agent 兼容：Codex 可直接安装本地 MCP；Claude Code、Hermes、OpenClaw 等工具可复用 `opg mcp`、`opg` CLI、OpenAPI 或 `opg-sdk`。
 - 数据库工作台：只允许当前 app 命名空间，例如 `app_<app_slug>__*`；写操作默认 dry-run。
 
 实现方式：
 
 - 后端模块：`developer-sdk`、`ai-agents`。
-- SDK 只依赖 `/sdk/manifest` 声明的稳定合同。
+- SDK、CLI 和 MCP 只依赖 `/sdk/manifest` 声明的稳定合同。
+- CLI 是人和 agent 的共同操作面；新增后端能力应优先补 manifest、SDK 方法、CLI 命令和 MCP tool，而不是只补平台 UI。
 - 数据库代理不暴露 `DATABASE_URL`。
 - SQL query 限制为 `SELECT` / `WITH`，结果截断；execute 默认事务回滚，真正执行必须传 `confirm=apply:<app-slug>`。
 - 所有数据库变更写入审计事件。
@@ -301,7 +323,7 @@ Infrastructure
 │   └── runtime-settings.md  # 极简环境变量和管理员配置
 ├── packages/
 │   ├── sdk/                 # opg-sdk 应用运行时客户端
-│   └── cli/                 # @jamba/opg-cli 初始化与 Codex MCP server
+│   └── cli/                 # @jamba/opg-cli 初始化、平台操作与 MCP server
 ├── LICENSE
 ├── package.json
 └── README.md
@@ -342,6 +364,26 @@ npx -y @jamba/opg-cli codex install
 ```
 
 `opg login` 会打开浏览器授权页，先保存全局平台登录；用户可以在没有 app 的情况下创建 app。app 创建完成后再执行 `opg login --app your-app`，这一步才会创建 app-scoped Developer Grant，并把本机 SDK 凭证保存到 `.opg/credentials.json`。Grant 在平台后台“开发者授权”里按 app 和 scope 管理；本地凭证文件已加入 `.gitignore`，不要提交。
+
+常用 CLI 操作：
+
+```bash
+npx -y @jamba/opg-cli manifest
+npx -y @jamba/opg-cli smoke
+npx -y @jamba/opg-cli db manifest
+npx -y @jamba/opg-cli db tables
+npx -y @jamba/opg-cli db query --sql "SELECT * FROM app_your_app__customers"
+npx -y @jamba/opg-cli platform apps list
+npx -y @jamba/opg-cli platform runtime get
+```
+
+Codex 使用 `.opg/codex-mcp.json`。其他 agent 工具可以直接调用 `opg` 命令；如果支持 MCP，把 MCP server 指向：
+
+```bash
+npx -y @jamba/opg-cli mcp
+```
+
+如果工具更适合代码内集成，使用 `opg-sdk`；如果工具更适合 HTTP 集成，读取后端 `openapi.json` 和 `/:app/v1/sdk/manifest`。
 
 SDK 数据库能力通过后端受控代理执行，不暴露 `DATABASE_URL`。AI agent 只能操作当前 app 命名空间内的表，例如 `app_your_app__customers`，写操作默认 dry-run，真正执行需要 `confirm=apply:<app-slug>`。
 
