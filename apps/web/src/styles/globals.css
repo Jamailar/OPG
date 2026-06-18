@@ -1896,6 +1896,7 @@ code {
 .email-service-modal label,
 .platform-form-grid.single-column {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
 }
 
@@ -2217,6 +2218,11 @@ code {
   gap: 8px;
   max-height: 420px;
   overflow: auto;
+}
+
+.tenant-email-modal .btn {
+  align-self: center;
+  min-height: 36px;
 }
 
 .tenant-email-summary {

@@ -4192,7 +4192,6 @@ const agents = await opg.agents.list();`}</pre>
                 <label>名称<input value={emailTemplateForm.name} onChange={(event) => setEmailTemplateForm({ ...emailTemplateForm, name: event.target.value })} /></label>
                 <label>标题<input value={emailTemplateForm.subject} onChange={(event) => setEmailTemplateForm({ ...emailTemplateForm, subject: event.target.value })} /></label>
                 <label>HTML<textarea rows={6} value={emailTemplateForm.html} onChange={(event) => setEmailTemplateForm({ ...emailTemplateForm, html: event.target.value })} /></label>
-                <button className="btn btn-sm" type="button" onClick={() => void saveEmailTemplate()} disabled={emailSaving}>保存模板</button>
               </div>
               <div className="tenant-email-modal-list">
                 {emailTemplates.map((item) => (
@@ -4203,6 +4202,12 @@ const agents = await opg.agents.list();`}</pre>
                 ))}
                 {!emailTemplates.length && <div className="loading">暂无模板</div>}
               </div>
+            </div>
+            <div className="platform-form-actions">
+              <button className="btn btn-secondary btn-sm" type="button" onClick={() => setEmailTemplatesModalOpen(false)} disabled={emailSaving}>取消</button>
+              <button className="btn btn-sm" type="button" onClick={() => void saveEmailTemplate()} disabled={emailSaving}>
+                {emailSaving ? '保存中...' : '保存模板'}
+              </button>
             </div>
           </section>
         </div>
