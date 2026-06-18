@@ -223,19 +223,38 @@ const RESERVED_APP_SLUG_PATHS = new Set([
   'setup',
 ]);
 
+const PLATFORM_PORTAL_PATHS = new Set([
+  'auth',
+  'platform-admin',
+  'sdk-login',
+  'setup',
+]);
+
+function resolveFirstPathSegment(): string {
+  if (typeof window === 'undefined') return '';
+  const firstSegment = window.location.pathname
+    .split('/')
+    .map((item) => item.trim())
+    .filter(Boolean)[0] || '';
+  try {
+    return normalizeSlug(decodeURIComponent(firstSegment));
+  } catch {
+    return normalizeSlug(firstSegment);
+  }
+}
+
+function isPlatformPortalPath(): boolean {
+  const first = resolveFirstPathSegment();
+  return !first || PLATFORM_PORTAL_PATHS.has(first);
+}
+
 function resolvePathAppSlug(): string {
   if (typeof window === 'undefined') return '';
   const segments = window.location.pathname
     .split('/')
     .map((item) => item.trim())
     .filter(Boolean);
-  let decoded = segments[0] || '';
-  try {
-    decoded = decodeURIComponent(decoded);
-  } catch {
-    decoded = segments[0] || '';
-  }
-  const first = normalizeSlug(decoded);
+  const first = resolveFirstPathSegment();
   if (!first || RESERVED_APP_SLUG_PATHS.has(first)) return '';
   if (segments.length === 1 || normalizeSlug(segments[1]) === 'admin') return first;
   return '';
@@ -273,6 +292,11 @@ export async function resolveAdminContextByAppSlug(appSlug: string): Promise<Dis
 
 export async function bootstrapRuntimeContext(): Promise<void> {
   await loadRemoteRuntimeConfig();
+
+  if (isPlatformPortalPath()) {
+    applyRuntimeContext('platform', PLATFORM_APP_SLUG, runtimeContext.appName);
+    return;
+  }
 
   const pathAppSlug = resolvePathAppSlug();
   if (pathAppSlug) {

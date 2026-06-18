@@ -6,6 +6,7 @@ import {
   Header,
   HttpCode,
   HttpStatus,
+  Inject,
   Param,
   Post,
   Query,
@@ -13,12 +14,14 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
+import { ConfigType } from '@nestjs/config';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { User as UserType } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { tenantControllerPaths } from '../../common/utils/controller-paths';
+import configuration from '../../config/configuration';
 import {
   ForgotPasswordDto,
   LoginEmailCodeDto,
@@ -42,6 +45,7 @@ export class AuthController {
     private readonly accountBindingService: AccountBindingService,
     private readonly appleIdentityService: AppleIdentityService,
     private readonly iosAppAttestService: IosAppAttestService,
+    @Inject(configuration.KEY) private readonly config: ConfigType<typeof configuration>,
   ) {}
 
   private resolveBodyAppSlug(routeApp?: string, body?: Record<string, unknown>, queryApp?: string) {
@@ -49,8 +53,16 @@ export class AuthController {
       String(routeApp || '').trim() ||
       String(body?.app_slug || body?.appSlug || body?.app || '').trim() ||
       String(queryApp || '').trim() ||
-      undefined
+      this.platformAppSlug()
     );
+  }
+
+  private resolveRouteAppSlug(routeApp?: string) {
+    return String(routeApp || '').trim() || this.platformAppSlug();
+  }
+
+  private platformAppSlug() {
+    return String(this.config.app.platformSlug || 'platform').trim().toLowerCase() || 'platform';
   }
 
   private buildCurrentCallbackUrl(req: any): string {
@@ -78,7 +90,7 @@ export class AuthController {
     if (!email || !password) {
       throw new BadRequestException('Email and password are required');
     }
-    return this.authService.login(email, password, app);
+    return this.authService.login(email, password, this.resolveRouteAppSlug(app));
   }
 
   @Public()
@@ -86,7 +98,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '发送邮箱登录验证码' })
   async sendEmailLoginCode(@Body() body: { email?: string }, @Param('app') app?: string) {
-    return this.authService.sendEmailLoginCode(String(body?.email || ''), app);
+    return this.authService.sendEmailLoginCode(String(body?.email || ''), this.resolveRouteAppSlug(app));
   }
 
   @Public()
@@ -94,7 +106,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '邮箱验证码登录' })
   async loginWithEmailCode(@Body() body: LoginEmailCodeDto, @Param('app') app?: string) {
-    return this.authService.loginWithEmailCode(body.email, body.code, app);
+    return this.authService.loginWithEmailCode(body.email, body.code, this.resolveRouteAppSlug(app));
   }
 
   @Public()
@@ -108,7 +120,7 @@ export class AuthController {
         fullName: dto.fullName,
         inviteCode: dto.invite_code,
       },
-      app,
+      this.resolveRouteAppSlug(app),
     );
   }
 
@@ -137,7 +149,7 @@ export class AuthController {
     if (!refreshToken) {
       throw new UnauthorizedException('No refresh token provided');
     }
-    return this.authService.refreshToken(refreshToken, app);
+    return this.authService.refreshToken(refreshToken, this.resolveRouteAppSlug(app));
   }
 
   @Post('logout')
@@ -192,21 +204,21 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '发送短信验证码' })
   async sendSmsCode(@Body() body: { phone: string }, @Param('app') app?: string) {
-    return this.authService.sendSmsCode(body.phone, app);
+    return this.authService.sendSmsCode(body.phone, this.resolveRouteAppSlug(app));
   }
 
   @Public()
   @Post('login/sms')
   @ApiOperation({ summary: '短信登录' })
   async loginWithSms(@Body() body: LoginSmsDto, @Param('app') app?: string) {
-    return this.authService.loginWithSms(body.phone, body.code, app, body.invite_code);
+    return this.authService.loginWithSms(body.phone, body.code, this.resolveRouteAppSlug(app), body.invite_code);
   }
 
   @Public()
   @Post('register/sms')
   @ApiOperation({ summary: '短信注册（兼容别名）' })
   async registerWithSms(@Body() body: LoginSmsDto, @Param('app') app?: string) {
-    return this.authService.loginWithSms(body.phone, body.code, app, body.invite_code);
+    return this.authService.loginWithSms(body.phone, body.code, this.resolveRouteAppSlug(app), body.invite_code);
   }
 
   @Public()
@@ -216,7 +228,7 @@ export class AuthController {
   @Header('Expires', '0')
   @ApiOperation({ summary: '获取登录方式' })
   async getLoginProviders(@Param('app') app?: string) {
-    return this.authService.getLoginProviders(app);
+    return this.authService.getLoginProviders(this.resolveRouteAppSlug(app));
   }
 
   @Public()
@@ -226,14 +238,14 @@ export class AuthController {
   @Header('Expires', '0')
   @ApiOperation({ summary: '获取微信登录 URL' })
   async getWechatLoginUrl(@Param('app') app?: string, @Query('state') state?: string) {
-    return this.authService.getWechatLoginUrl(app, state);
+    return this.authService.getWechatLoginUrl(this.resolveRouteAppSlug(app), state);
   }
 
   @Public()
   @Get('login/wechat/web')
   @ApiOperation({ summary: '获取微信网页登录 URL' })
   async getWechatWebLoginUrl(@Param('app') app?: string, @Query('state') state?: string) {
-    return this.authService.getWechatLoginUrl(app, state);
+    return this.authService.getWechatLoginUrl(this.resolveRouteAppSlug(app), state);
   }
 
   @Public()
@@ -243,28 +255,28 @@ export class AuthController {
   @Header('Expires', '0')
   @ApiOperation({ summary: '查询微信扫码登录状态' })
   async getWechatLoginStatus(@Query('session_id') sessionId: string, @Param('app') app?: string) {
-    return this.authService.getWechatLoginStatus(sessionId, app);
+    return this.authService.getWechatLoginStatus(sessionId, this.resolveRouteAppSlug(app));
   }
 
   @Public()
   @Post('login/wechat')
   @ApiOperation({ summary: '微信登录' })
   async loginWithWechat(@Body() body: { code: string }, @Param('app') app?: string) {
-    return this.authService.loginWithWechat(body.code, app);
+    return this.authService.loginWithWechat(body.code, this.resolveRouteAppSlug(app));
   }
 
   @Public()
   @Get('login/wechat/callback')
   @ApiOperation({ summary: '微信登录回调' })
   async loginWithWechatCallback(@Query('code') code: string, @Query('state') state?: string, @Param('app') app?: string) {
-    return this.authService.loginWithWechatCallback(code, app, state);
+    return this.authService.loginWithWechatCallback(code, this.resolveRouteAppSlug(app), state);
   }
 
   @Public()
   @Post('login/google')
   @ApiOperation({ summary: 'Google 登录' })
   async loginWithGoogle(@Body() body: { id_token: string }, @Param('app') app?: string) {
-    return this.authService.loginWithGoogle(body.id_token, app);
+    return this.authService.loginWithGoogle(body.id_token, this.resolveRouteAppSlug(app));
   }
 
   @Public()
@@ -278,7 +290,7 @@ export class AuthController {
     @Query('state') state?: string,
     @Param('app') app?: string,
   ) {
-    return this.authService.loginWithGoogleCallback(code, credential || idToken, app, this.buildCurrentCallbackUrl(req), state);
+    return this.authService.loginWithGoogleCallback(code, credential || idToken, this.resolveRouteAppSlug(app), this.buildCurrentCallbackUrl(req), state);
   }
 
   @Public()
@@ -288,14 +300,14 @@ export class AuthController {
   @Header('Expires', '0')
   @ApiOperation({ summary: '获取 Google 登录配置' })
   async getGoogleLoginConfig(@Param('app') app?: string) {
-    return this.authService.getGoogleLoginConfig(app);
+    return this.authService.getGoogleLoginConfig(this.resolveRouteAppSlug(app));
   }
 
   @Public()
   @Post('login/github')
   @ApiOperation({ summary: 'GitHub 登录' })
   async loginWithGitHub(@Body() body: { code: string; redirect_uri?: string }, @Param('app') app?: string) {
-    return this.authService.loginWithGitHub(body.code, app, body.redirect_uri);
+    return this.authService.loginWithGitHub(body.code, this.resolveRouteAppSlug(app), body.redirect_uri);
   }
 
   @Public()
@@ -307,7 +319,7 @@ export class AuthController {
     @Query('state') state?: string,
     @Param('app') app?: string,
   ) {
-    return this.authService.loginWithGitHubCallback(code, app, this.buildCurrentCallbackUrl(req), state);
+    return this.authService.loginWithGitHubCallback(code, this.resolveRouteAppSlug(app), this.buildCurrentCallbackUrl(req), state);
   }
 
   @Public()
@@ -317,7 +329,7 @@ export class AuthController {
   @Header('Expires', '0')
   @ApiOperation({ summary: '获取 GitHub 登录配置' })
   async getGitHubLoginConfig(@Param('app') app?: string) {
-    return this.authService.getGitHubLoginConfig(app);
+    return this.authService.getGitHubLoginConfig(this.resolveRouteAppSlug(app));
   }
 
   @Public()
@@ -327,7 +339,7 @@ export class AuthController {
   @Header('Expires', '0')
   @ApiOperation({ summary: '获取 Apple 登录配置' })
   async getAppleLoginConfig(@Param('app') app?: string) {
-    return this.appleIdentityService.getPublicConfig(app);
+    return this.appleIdentityService.getPublicConfig(this.resolveRouteAppSlug(app));
   }
 
   @Public()
@@ -345,7 +357,7 @@ export class AuthController {
     @Req() req: any,
     @Param('app') app?: string,
   ) {
-    return this.accountBindingService.loginWithApple(body || {}, app, req);
+    return this.accountBindingService.loginWithApple(body || {}, this.resolveRouteAppSlug(app), req);
   }
 
   @Public()
@@ -356,7 +368,7 @@ export class AuthController {
     @Req() req: any,
     @Param('app') app?: string,
   ) {
-    return this.iosAppAttestService.createChallenge(app, body || {}, req);
+    return this.iosAppAttestService.createChallenge(this.resolveRouteAppSlug(app), body || {}, req);
   }
 
   @Public()
@@ -367,7 +379,7 @@ export class AuthController {
     @Req() req: any,
     @Param('app') app?: string,
   ) {
-    return this.iosAppAttestService.registerDevice(app, body || {}, req);
+    return this.iosAppAttestService.registerDevice(this.resolveRouteAppSlug(app), body || {}, req);
   }
 
   @Public()
@@ -378,7 +390,7 @@ export class AuthController {
     @Req() req: any,
     @Param('app') app?: string,
   ) {
-    return this.accountBindingService.loginWithDevice(body || {}, app, req);
+    return this.accountBindingService.loginWithDevice(body || {}, this.resolveRouteAppSlug(app), req);
   }
 
   @Post('bind-wechat')
