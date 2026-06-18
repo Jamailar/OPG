@@ -2133,6 +2133,92 @@ code {
   font-size: 13px;
 }
 
+.tenant-email-actions {
+  justify-content: flex-end;
+}
+
+.tenant-email-main-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(360px, 0.8fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.tenant-email-table-card {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.tenant-email-list-head {
+  align-items: flex-start;
+}
+
+.tenant-email-list-head h3 {
+  margin-bottom: 4px;
+}
+
+.tenant-email-list-head span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.tenant-email-table-wrap {
+  margin: 0;
+}
+
+.tenant-email-table-wrap table {
+  min-width: 680px;
+}
+
+.tenant-email-cell-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tenant-email-cell-main strong,
+.tenant-email-cell-main span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tenant-email-cell-main span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.tenant-email-modal {
+  display: grid;
+  gap: 16px;
+}
+
+.tenant-email-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tenant-email-modal-head h3 {
+  margin: 0;
+}
+
+.tenant-email-modal-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.75fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.tenant-email-modal-list {
+  display: grid;
+  gap: 8px;
+  max-height: 420px;
+  overflow: auto;
+}
+
 .tenant-email-summary {
   grid-template-columns: repeat(5, minmax(120px, 1fr));
 }
@@ -2242,6 +2328,10 @@ code {
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   }
 
+  .tenant-email-main-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .tenant-email-support-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2267,6 +2357,7 @@ code {
   }
 
   .tenant-email-campaign-layout,
+  .tenant-email-modal-grid,
   .tenant-email-support-grid {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -2276,6 +2367,10 @@ code {
   .tenant-email-topbar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .tenant-email-actions {
+    justify-content: flex-start;
   }
 
   .tenant-email-campaign-form {
