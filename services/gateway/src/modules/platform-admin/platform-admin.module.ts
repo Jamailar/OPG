@@ -23,9 +23,10 @@ import { FeedbackAdminApiKeyGuard } from '../../common/guards/feedback-admin-api
 import { RuntimeSettingsModule } from '../runtime-settings/runtime-settings.module';
 import { SmsModule } from '../sms/sms.module';
 import { BuiltInTestAppSeedService } from './built-in-test-app-seed.service';
+import { PlatformTasksModule } from '../platform-tasks/platform-tasks.module';
 
 @Module({
-  imports: [AiChatModule, RedeemModule, BehaviorAnalyticsModule, FeedbackModule, PaymentsModule, AuthModule, TenantSiteModule, EmailDeliveryModule, OutboundProxyModule, RuntimeSettingsModule, SmsModule],
+  imports: [AiChatModule, RedeemModule, BehaviorAnalyticsModule, FeedbackModule, PaymentsModule, AuthModule, TenantSiteModule, EmailDeliveryModule, OutboundProxyModule, RuntimeSettingsModule, SmsModule, PlatformTasksModule],
   controllers: [PlatformAdminController, FeedbackAdminApiController],
   providers: [
     PlatformAdminService,

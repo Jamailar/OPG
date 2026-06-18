@@ -37,6 +37,7 @@
     "ai": "^6.0.138",
     "ali-oss": "^6.23.0",
     "bcrypt": "^5.1.0",
+    "bullmq": "^5.78.1",
     "cbor-x": "^1.6.4",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.0",

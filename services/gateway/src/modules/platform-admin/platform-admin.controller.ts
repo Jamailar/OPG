@@ -11,6 +11,8 @@ import { PlatformAdminAiDebugJwtAuthGuard } from './guards/platform-admin-ai-deb
 import { RuntimeSettingsService } from '../runtime-settings/runtime-settings.service';
 import { AiGatewayObservabilityService } from '../ai-chat/ai-gateway-observability.service';
 import { PlatformObservabilityService } from '../observability/platform-observability.service';
+import { PlatformTasksService } from '../platform-tasks/platform-tasks.service';
+import { PlatformTaskStatus } from '../platform-tasks/platform-tasks.types';
 
 @ApiTags('PlatformAdmin')
 @Controller(tenantControllerPaths('platform-admin', true))
@@ -25,6 +27,7 @@ export class PlatformAdminController {
     private readonly runtimeSettingsService: RuntimeSettingsService,
     private readonly aiGatewayObservabilityService: AiGatewayObservabilityService,
     private readonly platformObservabilityService: PlatformObservabilityService,
+    private readonly platformTasksService: PlatformTasksService,
   ) {}
 
   @Get('apps')
@@ -107,6 +110,85 @@ export class PlatformAdminController {
       page,
       page_size: pageSize,
     });
+  }
+
+
+  @Get('tasks/runtime')
+  @ApiOperation({ summary: '平台任务运行摘要' })
+  async getPlatformTaskRuntime() {
+    return this.platformTasksService.getRuntime();
+  }
+
+  @Get('tasks')
+  @ApiOperation({ summary: '平台任务列表' })
+  async listPlatformTasks(
+    @Query('app_id') appId?: string,
+    @Query('module') module?: string,
+    @Query('action') action?: string,
+    @Query('status') status?: string,
+    @Query('queue_name') queueName?: string,
+    @Query('request_id') requestId?: string,
+    @Query('source_type') sourceType?: string,
+    @Query('source_id') sourceId?: string,
+    @Query('days') days?: string,
+    @Query('page') page?: string,
+    @Query('page_size') pageSize?: string,
+  ) {
+    return this.platformTasksService.listTasks({
+      app_id: appId,
+      module,
+      action,
+      status,
+      queue_name: queueName,
+      request_id: requestId,
+      source_type: sourceType,
+      source_id: sourceId,
+      days,
+      page,
+      page_size: pageSize,
+    });
+  }
+
+  @Get('tasks/:task_id')
+  @ApiOperation({ summary: '平台任务详情' })
+  async getPlatformTask(@Param('task_id') taskId: string) {
+    return this.platformTasksService.getTask(taskId);
+  }
+
+  @Post('tasks')
+  @ApiOperation({ summary: '创建平台任务' })
+  async createPlatformTask(@Req() req: any, @Body() body: any) {
+    return this.platformTasksService.createTask(body || {}, req.user?.id);
+  }
+
+  @Post('tasks/:task_id/transition')
+  @ApiOperation({ summary: '更新平台任务状态' })
+  async transitionPlatformTask(@Req() req: any, @Param('task_id') taskId: string, @Body() body: any) {
+    return this.platformTasksService.transitionTask(taskId, String(body?.status || '') as PlatformTaskStatus, body || {}, req.user?.id);
+  }
+
+  @Post('tasks/:task_id/events')
+  @ApiOperation({ summary: '追加平台任务事件' })
+  async appendPlatformTaskEvent(@Param('task_id') taskId: string, @Body() body: any) {
+    return this.platformTasksService.appendEvent(taskId, body || {});
+  }
+
+  @Post('tasks/:task_id/logs')
+  @ApiOperation({ summary: '追加平台任务日志' })
+  async appendPlatformTaskLog(@Param('task_id') taskId: string, @Body() body: any) {
+    return this.platformTasksService.appendLog(taskId, body || {});
+  }
+
+  @Post('tasks/:task_id/cancel')
+  @ApiOperation({ summary: '取消平台任务' })
+  async cancelPlatformTask(@Req() req: any, @Param('task_id') taskId: string) {
+    return this.platformTasksService.cancelTask(taskId, req.user?.id);
+  }
+
+  @Post('tasks/workers/heartbeat')
+  @ApiOperation({ summary: '上报平台任务 worker 心跳' })
+  async recordPlatformTaskWorkerHeartbeat(@Body() body: any) {
+    return this.platformTasksService.recordWorkerHeartbeat(body || {});
   }
 
   @Get('storage/providers')

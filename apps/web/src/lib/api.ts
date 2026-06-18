@@ -1934,6 +1934,104 @@ export interface PlatformObservabilityEventsQuery {
   page_size?: string | number;
 }
 
+export interface PlatformTaskItem {
+  id: string;
+  app_id?: string | null;
+  environment_key: string;
+  module: string;
+  action: string;
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'retrying' | 'expired' | string;
+  idempotency_key?: string | null;
+  queue_name: string;
+  worker_id?: string | null;
+  source_type?: string | null;
+  source_id?: string | null;
+  actor_user_id?: string | null;
+  request_id?: string | null;
+  priority?: number | string;
+  attempts?: number | string;
+  max_attempts?: number | string;
+  timeout_ms?: number | string;
+  progress?: number | string;
+  input_summary_json?: Record<string, unknown>;
+  output_summary_json?: Record<string, unknown>;
+  cost_estimate_json?: Record<string, unknown>;
+  result_json?: Record<string, unknown> | null;
+  error_code?: string | null;
+  error_message?: string | null;
+  locked_at?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  cancelled_at?: string | null;
+  next_retry_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PlatformTaskEventItem {
+  id: string;
+  task_id: string;
+  seq: number | string;
+  event_type: string;
+  stage?: string | null;
+  payload_json?: Record<string, unknown>;
+  created_at?: string;
+}
+
+export interface PlatformTaskLogItem {
+  id: string;
+  task_id: string;
+  seq: number | string;
+  stream: 'stdout' | 'stderr' | 'system' | string;
+  message_redacted: string;
+  metadata_json?: Record<string, unknown>;
+  created_at?: string;
+}
+
+export interface PlatformTaskDetail {
+  task: PlatformTaskItem;
+  events: PlatformTaskEventItem[];
+  logs: PlatformTaskLogItem[];
+}
+
+export interface PlatformTasksResponse {
+  items: PlatformTaskItem[];
+  page: number;
+  page_size: number;
+  has_more: boolean;
+}
+
+export interface PlatformTasksQuery {
+  app_id?: string;
+  module?: string;
+  action?: string;
+  status?: string;
+  queue_name?: string;
+  request_id?: string;
+  source_type?: string;
+  source_id?: string;
+  days?: string | number;
+  page?: string | number;
+  page_size?: string | number;
+}
+
+export interface PlatformTaskRuntime {
+  schema_ready: boolean;
+  queue: {
+    backend: 'bullmq' | 'db';
+    available: boolean;
+    queue_name: string;
+    redis_url_configured: boolean;
+    last_error?: string | null;
+  };
+  summary?: {
+    by_status?: Array<{ status: string; count: string | number }>;
+    by_module?: Array<{ module: string; count: string | number; failed_count?: string | number; last_updated_at?: string | null }>;
+    recent_failures?: PlatformTaskItem[];
+    workers?: Array<Record<string, unknown>>;
+  } | null;
+}
+
 export interface PlatformAiModelConnectivityTestResult {
   ok: boolean;
   status_code: number | null;
@@ -3593,6 +3691,45 @@ export const platformApi = {
   listPlatformAuditEvents: async (params?: PlatformObservabilityEventsQuery) => {
     const response = await apiClient.getClient().get('/platform-admin/observability/audit-events', { params });
     return response.data;
+  },
+
+  getPlatformTaskRuntime: async (): Promise<PlatformTaskRuntime> => {
+    const response = await apiClient.getClient().get('/platform-admin/tasks/runtime');
+    return response.data?.data || response.data;
+  },
+
+  listPlatformTasks: async (params?: PlatformTasksQuery): Promise<PlatformTasksResponse> => {
+    const response = await apiClient.getClient().get('/platform-admin/tasks', { params });
+    return response.data?.data || response.data;
+  },
+
+  getPlatformTask: async (taskId: string): Promise<PlatformTaskDetail> => {
+    const response = await apiClient.getClient().get(`/platform-admin/tasks/${taskId}`);
+    return response.data?.data || response.data;
+  },
+
+  createPlatformTask: async (payload: {
+    app_id?: string | null;
+    module: string;
+    action: string;
+    queue_name?: string | null;
+    source_type?: string | null;
+    source_id?: string | null;
+    idempotency_key?: string | null;
+    input_summary?: Record<string, unknown> | null;
+  }): Promise<PlatformTaskDetail> => {
+    const response = await apiClient.getClient().post('/platform-admin/tasks', payload);
+    return response.data?.data || response.data;
+  },
+
+  transitionPlatformTask: async (taskId: string, payload: { status: string; progress?: number; error_code?: string; error_message?: string }) => {
+    const response = await apiClient.getClient().post(`/platform-admin/tasks/${taskId}/transition`, payload);
+    return response.data?.data || response.data;
+  },
+
+  cancelPlatformTask: async (taskId: string) => {
+    const response = await apiClient.getClient().post(`/platform-admin/tasks/${taskId}/cancel`);
+    return response.data?.data || response.data;
   },
 
   createGlobalAiSource: async (

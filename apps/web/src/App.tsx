@@ -23,6 +23,7 @@ import PlatformEmailServicePage from '@/pages/platform/PlatformEmailServicePage'
 import PlatformStorageSettingsPage from '@/pages/platform/PlatformStorageSettingsPage';
 import PlatformRuntimeSettingsPage from '@/pages/platform/PlatformRuntimeSettingsPage';
 import PlatformObservabilityPage from '@/pages/platform/PlatformObservabilityPage';
+import PlatformJobsPage from '@/pages/platform/PlatformJobsPage';
 import PlatformLayout from '@/components/PlatformLayout';
 import { applyRuntimeContext, runtimeContext } from '@/lib/runtime-context';
 import '@/styles/globals.css';
@@ -238,6 +239,15 @@ function App() {
             element={
               <PlatformProtectedRoute>
                 <PlatformStorageSettingsPage />
+              </PlatformProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/platform-admin/jobs"
+            element={
+              <PlatformProtectedRoute>
+                <PlatformJobsPage />
               </PlatformProtectedRoute>
             }
           />
