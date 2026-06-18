@@ -12175,11 +12175,19 @@ table tbody tr:nth-child(even):hover td {
   border: 1px solid rgba(119, 113, 153, 0.18);
   border-radius: 10px;
   background: #ffffff;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
 }
 
 .sdk-auth-mode-option.active {
   border-color: rgba(111, 54, 242, 0.5);
   background: #faf7ff;
+}
+
+.sdk-auth-mode-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.66;
 }
 
 .sdk-auth-mode-option strong {
@@ -12197,6 +12205,28 @@ table tbody tr:nth-child(even):hover td {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+.sdk-auth-select {
+  display: grid;
+  gap: 8px;
+}
+
+.sdk-auth-select span {
+  color: #17182c;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.sdk-auth-select select {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 14px;
+  border: 1px solid rgba(119, 113, 153, 0.22);
+  border-radius: 10px;
+  background: #ffffff;
+  color: #17182c;
+  font: inherit;
 }
 
 .sdk-auth-meta > div {

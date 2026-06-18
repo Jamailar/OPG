@@ -78,7 +78,11 @@ export class DeveloperSdkController {
   @UseGuards(DeveloperSdkAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Authorize an SDK login session with the current app admin' })
-  async authorizeLoginSession(@Req() req: any, @Param('state') state: string, @Body() body: { scopes?: unknown }) {
+  async authorizeLoginSession(
+    @Req() req: any,
+    @Param('state') state: string,
+    @Body() body: { scopes?: unknown; target?: string; app_slug?: string; appSlug?: string; app?: string },
+  ) {
     return this.developerSdkLoginService.authorizeSession(resolveAppSlug(req), state, req.user, body || {});
   }
 

@@ -34,6 +34,9 @@ type LoginSessionRow = {
   app_id: string | null;
   app_slug: string | null;
   app_name: string | null;
+  selected_app_id: string | null;
+  selected_app_slug: string | null;
+  selected_app_name: string | null;
   callback_url: string;
   client_name: string;
   profile_name: string;
@@ -149,19 +152,24 @@ export class DeveloperSdkLoginService implements OnModuleInit {
     };
   }
 
-  async authorizeSession(appSlug: string | undefined, state: string, actor: LoginActor | undefined, body?: { scopes?: unknown }) {
+  async authorizeSession(appSlug: string | undefined, state: string, actor: LoginActor | undefined, body?: { scopes?: unknown; target?: string; app_slug?: string; appSlug?: string; app?: string }) {
     await this.ensureSchema();
     const app = appSlug ? await this.resolveApp(appSlug) : null;
     const session = await this.findSession(app?.id || null, state);
     const sessionApp = session.app_id && session.app_slug && session.app_name
       ? { id: session.app_id, slug: session.app_slug, name: session.app_name, status: '' }
       : null;
-    const actorUserId = sessionApp
-      ? await this.assertPlatformOrAppAdmin(sessionApp, actor)
+    const requestedTarget = String(body?.target || '').trim().toLowerCase();
+    const requestedAppSlug = String(body?.app_slug || body?.appSlug || body?.app || '').trim();
+    const selectedApp = !sessionApp && (requestedTarget === 'app' || requestedAppSlug)
+      ? await this.resolveApp(requestedAppSlug)
+      : null;
+    const actorUserId = sessionApp || selectedApp
+      ? await this.assertPlatformOrAppAdmin(sessionApp || selectedApp!, actor)
       : await this.assertPlatformAdmin(actor);
     this.assertSessionPending(session);
     const requestedScopes = this.deserializeStringArray(session.requested_scopes_json);
-    const grantedScopes = sessionApp
+    const grantedScopes = sessionApp || selectedApp
       ? this.developerAuthorizationService.normalizeScopes(body?.scopes, requestedScopes.length ? requestedScopes as any : DEFAULT_DEVELOPER_LOGIN_SCOPES)
       : [];
 
@@ -176,9 +184,10 @@ export class DeveloperSdkLoginService implements OnModuleInit {
             exchange_code_hash = $2,
             exchange_code_expires_at = $3,
             granted_scopes_json = $4::jsonb,
+            selected_app_id = $5::uuid,
             authorized_at = now(),
             updated_at = now()
-        WHERE id = $5::uuid
+        WHERE id = $6::uuid
           AND status = 'PENDING'
           AND expires_at > now()
       `,
@@ -186,6 +195,7 @@ export class DeveloperSdkLoginService implements OnModuleInit {
       exchangeCodeHash,
       exchangeExpiresAt,
       JSON.stringify(grantedScopes),
+      selectedApp?.id || null,
       session.id,
     );
 
@@ -236,9 +246,7 @@ export class DeveloperSdkLoginService implements OnModuleInit {
       throw new GoneException('SDK login code expired');
     }
 
-    const sessionApp = session.app_id && session.app_slug && session.app_name
-      ? { id: session.app_id, slug: session.app_slug, name: session.app_name, status: '' }
-      : null;
+    const sessionApp = this.resolveSessionApp(session);
 
     if (!sessionApp) {
       return this.exchangePlatformToken(session, secret.authorized_user_id);
@@ -343,6 +351,16 @@ export class DeveloperSdkLoginService implements OnModuleInit {
     return app;
   }
 
+  private resolveSessionApp(session: LoginSessionRow): AppRow | null {
+    if (session.app_id && session.app_slug && session.app_name) {
+      return { id: session.app_id, slug: session.app_slug, name: session.app_name, status: '' };
+    }
+    if (session.selected_app_id && session.selected_app_slug && session.selected_app_name) {
+      return { id: session.selected_app_id, slug: session.selected_app_slug, name: session.selected_app_name, status: '' };
+    }
+    return null;
+  }
+
   private async findSession(appId: string | null, state: string) {
     const normalizedState = String(state || '').trim();
     if (!normalizedState) {
@@ -351,12 +369,14 @@ export class DeveloperSdkLoginService implements OnModuleInit {
     const rows = await (this.prisma.$queryRawUnsafe(
       `
         SELECT s.id, s.app_id, a.slug AS app_slug, a.name AS app_name,
+               s.selected_app_id, selected_app.slug AS selected_app_slug, selected_app.name AS selected_app_name,
                s.callback_url, s.client_name, s.profile_name,
                COALESCE(s.session_mode, CASE WHEN s.app_id IS NULL THEN 'PLATFORM' ELSE 'APP' END) AS session_mode,
                s.status,
                s.expires_at, s.authorized_user_id, s.exchange_code_hash, s.requested_scopes_json
         FROM developer_sdk_login_sessions s
         LEFT JOIN apps a ON a.id = s.app_id
+        LEFT JOIN apps selected_app ON selected_app.id = s.selected_app_id
         WHERE (($1::uuid IS NULL AND s.app_id IS NULL) OR s.app_id = $1::uuid)
           AND s.state_hash = $2
         LIMIT 1
@@ -567,6 +587,7 @@ export class DeveloperSdkLoginService implements OnModuleInit {
       CREATE TABLE IF NOT EXISTS developer_sdk_login_sessions (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         app_id uuid NULL REFERENCES apps(id) ON DELETE CASCADE,
+        selected_app_id uuid NULL REFERENCES apps(id) ON DELETE SET NULL,
         session_mode varchar(24) NOT NULL DEFAULT 'APP',
         state_hash varchar(128) NOT NULL UNIQUE,
         callback_url text NOT NULL,
@@ -590,6 +611,7 @@ export class DeveloperSdkLoginService implements OnModuleInit {
       ALTER TABLE developer_sdk_login_sessions
         ALTER COLUMN app_id DROP NOT NULL,
         ADD COLUMN IF NOT EXISTS session_mode varchar(24) NOT NULL DEFAULT 'APP',
+        ADD COLUMN IF NOT EXISTS selected_app_id uuid NULL REFERENCES apps(id) ON DELETE SET NULL,
         ADD COLUMN IF NOT EXISTS requested_scopes_json jsonb NOT NULL DEFAULT '[]'::jsonb,
         ADD COLUMN IF NOT EXISTS granted_scopes_json jsonb NULL,
         ADD COLUMN IF NOT EXISTS developer_grant_id uuid NULL REFERENCES developer_authorization_grants(id) ON DELETE SET NULL

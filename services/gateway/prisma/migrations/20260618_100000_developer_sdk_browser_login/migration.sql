@@ -25,6 +25,7 @@ CREATE INDEX IF NOT EXISTS idx_developer_authorization_grants_prefix_status
 CREATE TABLE IF NOT EXISTS developer_sdk_login_sessions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   app_id uuid NULL REFERENCES apps(id) ON DELETE CASCADE,
+  selected_app_id uuid NULL REFERENCES apps(id) ON DELETE SET NULL,
   session_mode varchar(24) NOT NULL DEFAULT 'APP',
   state_hash varchar(128) NOT NULL UNIQUE,
   callback_url text NOT NULL,
@@ -49,4 +50,5 @@ CREATE INDEX IF NOT EXISTS idx_developer_sdk_login_sessions_app_status
 
 ALTER TABLE developer_sdk_login_sessions
   ALTER COLUMN app_id DROP NOT NULL,
-  ADD COLUMN IF NOT EXISTS session_mode varchar(24) NOT NULL DEFAULT 'APP';
+  ADD COLUMN IF NOT EXISTS session_mode varchar(24) NOT NULL DEFAULT 'APP',
+  ADD COLUMN IF NOT EXISTS selected_app_id uuid NULL REFERENCES apps(id) ON DELETE SET NULL;

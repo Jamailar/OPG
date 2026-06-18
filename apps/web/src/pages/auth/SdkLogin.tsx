@@ -17,6 +17,12 @@ type SdkLoginSession = {
   expires_at: string;
 };
 
+type SdkAuthApp = {
+  id?: string;
+  slug: string;
+  name?: string;
+};
+
 export default function SdkLogin() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -29,12 +35,16 @@ export default function SdkLogin() {
   const state = String(searchParams.get('state') || '').trim();
   const [session, setSession] = useState<SdkLoginSession | null>(null);
   const [selectedScopes, setSelectedScopes] = useState<string[]>([]);
+  const [authTarget, setAuthTarget] = useState<'platform' | 'app'>('platform');
+  const [apps, setApps] = useState<SdkAuthApp[]>([]);
+  const [selectedAppSlug, setSelectedAppSlug] = useState('');
+  const [appsLoading, setAppsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [authorizing, setAuthorizing] = useState(false);
   const [message, setMessage] = useState<{ type: 'error' | 'info'; text: string } | null>(null);
 
-  const authorizationMode = session?.mode === 'app' && session.app ? 'app' : 'platform';
-  const authorizationLabel = authorizationMode === 'platform' ? '全平台授权' : '单个应用授权';
+  const fixedAppSession = session?.mode === 'app' && session.app ? session.app : null;
+  const authorizationLabel = authTarget === 'platform' ? '全平台授权' : '单个应用授权';
 
   useEffect(() => {
     let cancelled = false;
@@ -66,6 +76,21 @@ export default function SdkLogin() {
           const payload = data?.data || data;
           setSession(payload);
           setSelectedScopes(payload.scopes || []);
+          if (payload.mode === 'app' && payload.app?.slug) {
+            setAuthTarget('app');
+            setSelectedAppSlug(payload.app.slug);
+          } else {
+            let savedTarget = '';
+            let savedApp = '';
+            if (typeof window !== 'undefined') {
+              savedTarget = sessionStorage.getItem('opg_sdk_auth_target') || '';
+              savedApp = sessionStorage.getItem('opg_sdk_auth_app') || '';
+              sessionStorage.removeItem('opg_sdk_auth_target');
+              sessionStorage.removeItem('opg_sdk_auth_app');
+            }
+            setAuthTarget(savedTarget === 'app' ? 'app' : 'platform');
+            setSelectedAppSlug(savedApp);
+          }
         }
       } catch (error: any) {
         if (!cancelled) {
@@ -84,11 +109,69 @@ export default function SdkLogin() {
     };
   }, [app, baseUrl, isPlatformMode, state]);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function loadApps() {
+      const token = authService.getToken();
+      if (!session || fixedAppSession || !token || !baseUrl) {
+        return;
+      }
+      setAppsLoading(true);
+      try {
+        const response = await fetch(`${baseUrl}/api/v1/platform-admin/apps?include_inactive=true`, {
+          headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data?.message || '应用列表加载失败');
+        }
+        const payload = data?.data || data;
+        const items = Array.isArray(payload?.items) ? payload.items : [];
+        if (!cancelled) {
+          const nextApps = items
+            .map((item: any) => ({
+              id: String(item?.id || ''),
+              slug: String(item?.slug || '').trim(),
+              name: String(item?.name || '').trim(),
+            }))
+            .filter((item: SdkAuthApp) => item.slug);
+          setApps(nextApps);
+          setSelectedAppSlug((current) => {
+            if (current && nextApps.some((item: SdkAuthApp) => item.slug === current)) {
+              return current;
+            }
+            return nextApps[0]?.slug || '';
+          });
+        }
+      } catch (error: any) {
+        if (!cancelled && authTarget === 'app') {
+          setMessage({ type: 'error', text: error?.message || '应用列表加载失败' });
+        }
+      } finally {
+        if (!cancelled) {
+          setAppsLoading(false);
+        }
+      }
+    }
+
+    void loadApps();
+    return () => {
+      cancelled = true;
+    };
+  }, [authTarget, baseUrl, fixedAppSession, session]);
+
   const loginAndReturn = () => {
     if (typeof window !== 'undefined') {
       const returnUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
       localStorage.setItem('opg_sdk_login_return', returnUrl);
       sessionStorage.setItem('opg_sdk_login_return', returnUrl);
+      sessionStorage.setItem('opg_sdk_auth_target', authTarget);
+      if (selectedAppSlug) {
+        sessionStorage.setItem('opg_sdk_auth_app', selectedAppSlug);
+      }
     }
     navigate(runtimeContext.loginPath);
   };
@@ -97,6 +180,11 @@ export default function SdkLogin() {
     const token = authService.getToken();
     if (!token) {
       loginAndReturn();
+      return;
+    }
+
+    if (authTarget === 'app' && !selectedAppSlug) {
+      setMessage({ type: 'error', text: '请选择要授权的 app' });
       return;
     }
 
@@ -113,7 +201,11 @@ export default function SdkLogin() {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ scopes: selectedScopes }),
+        body: JSON.stringify({
+          scopes: authTarget === 'app' ? selectedScopes : [],
+          target: authTarget,
+          app_slug: authTarget === 'app' ? selectedAppSlug : undefined,
+        }),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -128,6 +220,8 @@ export default function SdkLogin() {
   };
 
   const expired = session?.status === 'EXPIRED';
+  const selectedApp = fixedAppSession || apps.find((item) => item.slug === selectedAppSlug) || null;
+  const appSelectionDisabled = Boolean(fixedAppSession) || authorizing || expired;
   const toggleScope = (scope: string) => {
     setSelectedScopes((prev) => (prev.includes(scope) ? prev.filter((item) => item !== scope) : [...prev, scope]));
   };
@@ -143,9 +237,9 @@ export default function SdkLogin() {
           <h1>授权本地开发工具</h1>
           <p>
             {session
-              ? authorizationMode === 'platform'
+              ? authTarget === 'platform'
                 ? `${session.client} 将获得平台控制面权限`
-                : `${session.client} 将访问 ${session.app?.name || session.app?.slug}`
+                : `${session.client} 将访问 ${selectedApp?.name || selectedApp?.slug || '所选 app'}`
               : '加载授权会话中'}
           </p>
         </div>
@@ -155,17 +249,43 @@ export default function SdkLogin() {
         {!loading && session ? (
           <div className="sdk-auth-form">
             <div className="sdk-auth-mode" aria-label="授权范围">
-              <div className={`sdk-auth-mode-option ${authorizationMode === 'platform' ? 'active' : ''}`}>
+              <button
+                className={`sdk-auth-mode-option ${authTarget === 'platform' ? 'active' : ''}`}
+                type="button"
+                onClick={() => setAuthTarget('platform')}
+                disabled={Boolean(fixedAppSession) || authorizing || expired}
+              >
                 <strong>全平台授权</strong>
-                <span>用于创建 app、管理平台配置和安装 MCP。默认授权范围。</span>
-              </div>
-              {authorizationMode === 'app' ? (
-                <div className="sdk-auth-mode-option active">
-                  <strong>单个应用授权</strong>
-                  <span>{session.app?.slug}</span>
-                </div>
-              ) : null}
+                <span>默认</span>
+              </button>
+              <button
+                className={`sdk-auth-mode-option ${authTarget === 'app' ? 'active' : ''}`}
+                type="button"
+                onClick={() => setAuthTarget('app')}
+                disabled={appSelectionDisabled}
+              >
+                <strong>单个 app 授权</strong>
+                <span>{selectedApp?.name || selectedApp?.slug || '可选'}</span>
+              </button>
             </div>
+
+            {authTarget === 'app' && !fixedAppSession ? (
+              <label className="sdk-auth-select">
+                <span>App</span>
+                <select
+                  value={selectedAppSlug}
+                  onChange={(event) => setSelectedAppSlug(event.target.value)}
+                  disabled={appsLoading || authorizing || expired}
+                >
+                  {!apps.length ? <option value="">{appsLoading ? '加载中...' : '暂无 app'}</option> : null}
+                  {apps.map((item) => (
+                    <option key={item.slug} value={item.slug}>
+                      {item.name ? `${item.name} (${item.slug})` : item.slug}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
 
             <div className="sdk-auth-meta">
               <div>
@@ -173,8 +293,8 @@ export default function SdkLogin() {
                 <strong>{authorizationLabel}</strong>
               </div>
               <div>
-                <span>配置</span>
-                <strong>{session.profile || 'default'}</strong>
+                <span>{authTarget === 'app' ? 'App' : '配置'}</span>
+                <strong>{authTarget === 'app' ? selectedApp?.slug || '-' : session.profile || 'default'}</strong>
               </div>
             </div>
 
@@ -196,7 +316,12 @@ export default function SdkLogin() {
 
             {message ? <div className={`message ${message.type}`}>{message.text}</div> : null}
 
-            <button className="btn sdk-auth-btn" type="button" onClick={authorize} disabled={authorizing || expired}>
+            <button
+              className="btn sdk-auth-btn"
+              type="button"
+              onClick={authorize}
+              disabled={authorizing || expired || (authTarget === 'app' && !selectedAppSlug && authService.isAuthenticated())}
+            >
               {authorizing ? '授权中...' : expired ? '授权已过期' : authService.isAuthenticated() ? '授权' : '登录后授权'}
             </button>
           </div>
