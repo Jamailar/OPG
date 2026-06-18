@@ -25,6 +25,7 @@ type AiUsageCapabilityFilter = 'ALL' | 'chat' | 'embedding' | 'tts' | 'stt' | 'i
 type AiUsageSuccessFilter = 'ALL' | 'SUCCESS' | 'FAILED';
 type AiModelStatusGroupKey = 'enabled' | 'hidden' | 'disabled' | 'deleted';
 type AiModelCapabilityFilter = 'ALL' | AiModelForm['capability'] | 'voice_clone';
+type AiModelSortMode = 'newest' | 'name' | 'provider';
 type ImageQualityKey = 'low' | 'medium' | 'high';
 type ImageResolutionKey = '1K' | '2K' | '4K';
 type VideoResolutionKey = '480P' | '720P' | '1080P' | '2K' | '4K';
@@ -295,6 +296,17 @@ const AI_CAPABILITY_OPTIONS: Array<{ value: AiModelForm['capability']; label: st
 const CAPABILITY_DEFAULT_ENDPOINT = new Map<string, string>(
   AI_CAPABILITY_OPTIONS.map((item) => [item.value, item.default_endpoint]),
 );
+
+const AI_MODEL_CATALOG_TABS: Array<{ value: AiModelCapabilityFilter; label: string }> = [
+  { value: 'ALL', label: '全部' },
+  { value: 'chat', label: 'Text' },
+  { value: 'image', label: 'Image' },
+  { value: 'embedding', label: 'Embeddings' },
+  { value: 'tts', label: 'Speech' },
+  { value: 'stt', label: 'Transcription' },
+  { value: 'video', label: 'Video' },
+  { value: 'voice_clone', label: 'Voice Clone' },
+];
 
 const isMinimaxProviderType = (providerType?: string | null): boolean =>
   String(providerType || '').trim().toLowerCase().includes('minimax');
@@ -1083,6 +1095,7 @@ export default function GlobalAiHub({ fixedTab, hideTopTabSwitcher = false, hide
   const [modelQuery, setModelQuery] = useState('');
   const [modelStatusFilter, setModelStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
   const [modelCapabilityFilter, setModelCapabilityFilter] = useState<AiModelCapabilityFilter>('ALL');
+  const [modelSortMode, setModelSortMode] = useState<AiModelSortMode>('newest');
   const [collapsedModelGroups, setCollapsedModelGroups] = useState<Record<AiModelStatusGroupKey, boolean>>({
     enabled: false,
     hidden: false,
@@ -1399,6 +1412,23 @@ export default function GlobalAiHub({ fixedTab, hideTopTabSwitcher = false, hide
     });
   }, [deletedAiModels, modelQuery, modelCapabilityFilter]);
 
+  const modelCatalogTabCounts = useMemo(() => {
+    const counts = AI_MODEL_CATALOG_TABS.reduce((acc, item) => {
+      acc[item.value] = 0;
+      return acc;
+    }, {} as Record<AiModelCapabilityFilter, number>);
+    aiModels.forEach((item) => {
+      counts.ALL += 1;
+      const itemIsVoiceClone = isVoiceCloneConfig(item.api_type, item.endpoint_path);
+      if (itemIsVoiceClone) {
+        counts.voice_clone += 1;
+        return;
+      }
+      counts[item.capability] += 1;
+    });
+    return counts;
+  }, [aiModels]);
+
   const modelGroups = useMemo(() => {
     const groups: Record<AiModelStatusGroupKey, PlatformAiModelItem[]> = {
       enabled: [],
@@ -1409,6 +1439,19 @@ export default function GlobalAiHub({ fixedTab, hideTopTabSwitcher = false, hide
     const sortByPriority = (items: PlatformAiModelItem[]) => [...items].sort((left, right) => {
       if (left.is_default !== right.is_default) {
         return left.is_default ? -1 : 1;
+      }
+      if (modelSortMode === 'newest') {
+        const leftTime = new Date(left.updated_at || left.created_at || 0).getTime();
+        const rightTime = new Date(right.updated_at || right.created_at || 0).getTime();
+        if (leftTime !== rightTime) {
+          return rightTime - leftTime;
+        }
+      }
+      if (modelSortMode === 'provider') {
+        const sourceCompare = String(left.default_source_name || '').localeCompare(String(right.default_source_name || ''));
+        if (sourceCompare !== 0) {
+          return sourceCompare;
+        }
       }
       return left.model_key.localeCompare(right.model_key);
     });
@@ -1432,7 +1475,7 @@ export default function GlobalAiHub({ fixedTab, hideTopTabSwitcher = false, hide
       { key: 'disabled' as const, label: '禁用', items: sortByPriority(groups.disabled), isDeleted: false },
       { key: 'deleted' as const, label: '已删除', items: sortByPriority(groups.deleted), isDeleted: true },
     ].filter((group) => group.items.length > 0);
-  }, [filteredModels, filteredDeletedModels]);
+  }, [filteredModels, filteredDeletedModels, modelSortMode]);
 
   const buildUsageParams = () => {
     const params: Record<string, unknown> = {};
@@ -2700,14 +2743,45 @@ export default function GlobalAiHub({ fixedTab, hideTopTabSwitcher = false, hide
     const itemSupportsDualTtsTest = item.capability === 'tts'
       && isMinimaxProviderType(itemSource?.provider_type)
       && !itemIsVoiceClone;
+    const capabilityLabel = itemIsVoiceClone
+      ? 'Voice Clone'
+      : AI_MODEL_CATALOG_TABS.find((tab) => tab.value === item.capability)?.label || item.capability;
     return (
-      <article key={item.id} className={`ai-hub-item-card ${getModelCardStatusClass(item, isDeleted)}`}>
-        <div className="ai-hub-item-head">
-          <div>
-            <h4>{item.model_key}</h4>
-            <p>{item.display_name || item.model_key}</p>
+      <article key={item.id} className={`ai-model-directory-row ${getModelCardStatusClass(item, isDeleted)}`}>
+        <div className="ai-model-directory-main">
+          <div className="ai-model-provider-mark" aria-hidden="true">
+            {(item.default_source_name || item.default_source_provider_type || item.model_key).slice(0, 1).toUpperCase()}
           </div>
-          <div className="ai-hub-item-status">
+          <div className="ai-model-title-block">
+            <div className="ai-model-title-line">
+              <h4>{item.display_name || item.model_key}</h4>
+              <span className="ai-model-capability-pill">{capabilityLabel}</span>
+            </div>
+            <p>
+              <span>{item.model_key}</span>
+              {item.upstream_model && item.upstream_model !== item.model_key ? (
+                <>
+                  <span className="ai-model-meta-separator">|</span>
+                  <span>{item.upstream_model}</span>
+                </>
+              ) : null}
+            </p>
+          </div>
+        </div>
+
+        <div className="ai-model-directory-meta">
+          <span>by {item.default_source_name || item.default_source_provider_type || '-'}</span>
+          <span>{formatDateTime(item.updated_at || item.created_at)}</span>
+          {!isDeleted && <span>{formatModelPrice(item)}</span>}
+          {!isDeleted && <span>{formatModelSellPrice(item)}</span>}
+          <span>{item.execution_mode}</span>
+          {Array.isArray(item.source_routes) && item.source_routes.length > 1 && (
+            <span>备用 {item.source_routes.length - 1}</span>
+          )}
+        </div>
+
+        <div className="ai-model-directory-side">
+          <div className="ai-model-directory-status">
             {isDeleted ? (
               <span className="status-tag error">DELETED</span>
             ) : (
@@ -2720,45 +2794,8 @@ export default function GlobalAiHub({ fixedTab, hideTopTabSwitcher = false, hide
               </>
             )}
           </div>
-        </div>
-        <div className="ai-hub-item-meta">
-          <div>
-            <span>能力</span>
-            <strong>{itemIsVoiceClone ? '声音复刻' : item.capability}</strong>
-          </div>
           {!isDeleted && (
-            <div>
-              <span>成本 / 积分售价</span>
-              <strong>{formatModelPrice(item)}</strong>
-              <div className="ai-hub-usage-subline">{formatModelSellPrice(item)}</div>
-            </div>
-          )}
-          <div>
-            <span>{isDeleted ? '默认源' : '优先来源'}</span>
-            <strong>{item.default_source_name}</strong>
-            {!isDeleted && Array.isArray(item.source_routes) && item.source_routes.length > 1 && (
-              <div className="ai-hub-usage-subline">备用 {item.source_routes.length - 1} 个</div>
-            )}
-          </div>
-          <div>
-            <span>上游模型</span>
-            <strong>{item.upstream_model}</strong>
-          </div>
-          {isDeleted && (
-            <>
-              <div>
-                <span>状态</span>
-                <strong>{item.is_visible ? (item.is_active ? 'ACTIVE' : 'INACTIVE') : 'HIDDEN'}</strong>
-              </div>
-              <div>
-                <span>更新时间</span>
-                <strong>{formatDateTime(item.updated_at)}</strong>
-              </div>
-            </>
-          )}
-        </div>
-        {!isDeleted && (
-          <div className="ai-hub-item-actions">
+          <div className="ai-model-directory-actions">
             <button
               className="btn btn-secondary btn-sm"
               onClick={() => navigate(`/platform-admin/ai/playground?model_id=${encodeURIComponent(item.id)}`)}
@@ -2824,7 +2861,8 @@ export default function GlobalAiHub({ fixedTab, hideTopTabSwitcher = false, hide
               删除
             </button>
           </div>
-        )}
+          )}
+        </div>
       </article>
     );
   };
@@ -3075,46 +3113,29 @@ export default function GlobalAiHub({ fixedTab, hideTopTabSwitcher = false, hide
             />
           )}
 
-          <div className="ai-hub-model-toolbar">
-            <div className="ai-hub-tabs ai-hub-model-capability-tabs" role="tablist" aria-label="模型能力分组">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={modelCapabilityFilter === 'ALL'}
-                className={`ai-hub-tab ${modelCapabilityFilter === 'ALL' ? 'active' : ''}`}
-                onClick={() => setModelCapabilityFilter('ALL')}
-              >
-                全部能力
-              </button>
-              {AI_CAPABILITY_OPTIONS.map((item) => (
+          <div className="ai-model-catalog-toolbar">
+            <div className="ai-model-catalog-tabs" role="tablist" aria-label="模型能力分组">
+              {AI_MODEL_CATALOG_TABS.map((item) => (
                 <button
                   key={item.value}
                   type="button"
                   role="tab"
                   aria-selected={modelCapabilityFilter === item.value}
-                  className={`ai-hub-tab ${modelCapabilityFilter === item.value ? 'active' : ''}`}
+                  className={`ai-model-catalog-tab ${modelCapabilityFilter === item.value ? 'active' : ''}`}
                   onClick={() => setModelCapabilityFilter(item.value)}
                 >
-                  {item.label}
+                  <span>{item.label}</span>
+                  <small>{modelCatalogTabCounts[item.value] || 0}</small>
                 </button>
               ))}
-              <button
-                type="button"
-                role="tab"
-                aria-selected={modelCapabilityFilter === 'voice_clone'}
-                className={`ai-hub-tab ${modelCapabilityFilter === 'voice_clone' ? 'active' : ''}`}
-                onClick={() => setModelCapabilityFilter('voice_clone')}
-              >
-                声音复刻
-              </button>
             </div>
 
-            <div className="ai-hub-filter-row ai-hub-model-filter-row">
+            <div className="ai-model-catalog-controls">
               <input
                 className="platform-filter-input"
                 value={modelQuery}
                 onChange={(event) => setModelQuery(event.target.value)}
-                placeholder="搜索模型标识 / 显示名 / 上游模型"
+                placeholder="Search models..."
               />
               <select
                 value={modelStatusFilter}
@@ -3123,6 +3144,14 @@ export default function GlobalAiHub({ fixedTab, hideTopTabSwitcher = false, hide
                 <option value="ALL">全部状态</option>
                 <option value="ACTIVE">ACTIVE</option>
                 <option value="INACTIVE">INACTIVE</option>
+              </select>
+              <select
+                value={modelSortMode}
+                onChange={(event) => setModelSortMode(event.target.value as AiModelSortMode)}
+              >
+                <option value="newest">Newest</option>
+                <option value="name">Name</option>
+                <option value="provider">Provider</option>
               </select>
               <button
                 className="btn btn-secondary btn-sm"
