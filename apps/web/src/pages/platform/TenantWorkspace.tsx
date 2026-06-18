@@ -145,7 +145,7 @@ const WORKSPACE_NAV: Array<{ key: WorkspaceSection; label: string; desc: string 
   { key: 'developers', label: '开发者接入', desc: 'SDK、Codex 与授权' },
   { key: 'admins', label: '管理员管理', desc: '账号、密码、权限' },
   { key: 'ai-routing', label: 'AI 模型路由', desc: '基于全局源做租户级覆盖' },
-  { key: 'email', label: '邮件', desc: '发件、联系人与批次' },
+  { key: 'email', label: '邮件营销', desc: '发邮件批次与触达名单' },
   { key: 'feedback', label: '用户反馈', desc: '反馈处理、积分奖励' },
   { key: 'acquisition', label: '用户来源', desc: '来源选项与提交记录' },
   { key: 'redeem', label: '产品与兑换', desc: '产品、兑换码与分发运营' },
@@ -3811,7 +3811,25 @@ const agents = await opg.agents.list();`}</pre>
       </section>
 
       <section className="card video-proxy-settings-card">
-        <div className="platform-section-head video-proxy-settings-head"><h3>视频下载加速</h3></div>
+        <div className="platform-section-head video-proxy-settings-head">
+          <h3>视频下载加速</h3>
+          <div className="video-proxy-help">
+            <button
+              className="video-proxy-help-trigger"
+              type="button"
+              aria-label="查看视频下载加速说明"
+              aria-describedby="video-proxy-help-tooltip"
+            >
+              ?
+            </button>
+            <div className="video-proxy-help-tooltip" id="video-proxy-help-tooltip" role="tooltip">
+              <strong>需要使用</strong>
+              <span>RunningHub 视频结果在服务端下载慢、403 或跨境网络不稳定时。</span>
+              <strong>启用缺点</strong>
+              <span>平台会多做一次下载和转存，可能增加完成等待时间，并消耗对象存储与带宽；超过最大文件会失败，缓存到期会清理。</span>
+            </div>
+          </div>
+        </div>
         <div className="video-proxy-settings-row">
           <label className="video-proxy-toggle">
             <input
@@ -3848,7 +3866,27 @@ const agents = await opg.agents.list();`}</pre>
       </section>
 
       <section className="card">
-        <div className="platform-section-head"><h3>默认模型列表</h3></div>
+        <div className="platform-section-head default-model-settings-head">
+          <h3>默认模型列表</h3>
+          <div className="default-model-help">
+            <button
+              className="default-model-help-trigger"
+              type="button"
+              aria-label="查看默认模型列表说明"
+              aria-describedby="default-model-help-tooltip"
+            >
+              ?
+            </button>
+            <div className="default-model-help-tooltip" id="default-model-help-tooltip" role="tooltip">
+              <strong>什么时候使用</strong>
+              <span>业务调用 AI 网关但没有指定具体 model 时，会按能力选择这里的默认槽位。</span>
+              <strong>生效规则</strong>
+              <span>先尝试主模型；主模型停用或无可用 source 时尝试备用模型，再回退到 capability 默认或全局默认。</span>
+              <strong>API</strong>
+              <span>管理：GET/PUT/DELETE /api/v1/platform-admin/apps/{'{app_id}'}/ai/default-model-slots/{'{slot_key}'}。业务读取：GET /{'{app}'}/v1/ai/default-models；OpenAI 兼容：GET /{'{app}'}/v1/default-models。</span>
+            </div>
+          </div>
+        </div>
         <div className="table-wrap">
           <table className="platform-table">
             <thead>
@@ -3967,118 +4005,174 @@ const agents = await opg.agents.list();`}</pre>
       other: '其他地区',
     })[String(region || '')] || region || '-';
 
-  const renderEmail = () => (
-    <div className="platform-page tenant-email-page">
-      <section className="email-service-summary">
-        <div><span>发件邮箱</span><strong>{emailSenders.length}</strong></div>
-        <div><span>联系人</span><strong>{emailContacts.length}</strong></div>
-        <div><span>模板</span><strong>{emailTemplates.length}</strong></div>
-        <div><span>批次</span><strong>{emailCampaigns.length}</strong></div>
-      </section>
+  const emailCampaignStatusLabel = (status?: string | null) =>
+    ({
+      draft: '草稿',
+      scheduled: '发送中',
+      sending: '发送中',
+      sent: '已完成',
+      completed: '已完成',
+      paused: '已暂停',
+      cancelled: '已取消',
+      failed: '失败',
+    })[String(status || '').toLowerCase()] || status || '-';
 
-      <section className="card">
-        <div className="platform-section-head">
-          <h3>发件设置</h3>
-          <button className="btn btn-sm" type="button" onClick={() => void saveEmailSettings()} disabled={emailSaving}>
-            {emailSaving ? '保存中...' : '保存'}
+  const emailCampaignStatusClass = (status?: string | null) => {
+    const normalized = String(status || '').toLowerCase();
+    if (normalized === 'draft') return 'muted';
+    if (normalized === 'scheduled' || normalized === 'sending' || normalized === 'paused') return 'warning';
+    if (normalized === 'sent' || normalized === 'completed') return 'success';
+    if (normalized === 'cancelled' || normalized === 'failed') return 'error';
+    return '';
+  };
+
+  const emailContactStatusLabel = (status?: string | null) =>
+    ({
+      subscribed: '可发送',
+      unsubscribed: '已退订',
+      bounced: '退信',
+      suppressed: '已屏蔽',
+    })[String(status || '').toLowerCase()] || status || '-';
+
+  const renderEmail = () => {
+    const activeContacts = emailContacts.filter((item) => item.status === 'subscribed').length;
+    const draftCampaigns = emailCampaigns.filter((item) => String(item.status || '').toLowerCase() === 'draft').length;
+    const queuedCampaigns = emailCampaigns.filter((item) => ['scheduled', 'sending', 'paused'].includes(String(item.status || '').toLowerCase())).length;
+    const deliveredTotal = emailCampaigns.reduce((sum, item) => sum + Number(item.delivered_count || 0), 0);
+
+    return (
+      <div className="platform-page tenant-email-page">
+        <section className="tenant-email-topbar">
+          <div>
+            <h2>邮件营销</h2>
+            <span>管理发邮件批次</span>
+          </div>
+          <button className="btn btn-secondary btn-sm" type="button" onClick={() => void loadEmailData()} disabled={emailLoading}>
+            {emailLoading ? '刷新中...' : '刷新'}
           </button>
-        </div>
-        <div className="platform-form-grid">
-          <label>营销发件邮箱<select value={emailSettings.marketing_sender_id || ''} onChange={(event) => setEmailSettings((prev) => ({ ...prev, marketing_sender_id: event.target.value || null }))}><option value="">请选择</option>{emailSenders.map((item) => <option key={item.id} value={item.id}>{item.email}</option>)}</select></label>
-          <label>通知发件邮箱<select value={emailSettings.notification_sender_id || ''} onChange={(event) => setEmailSettings((prev) => ({ ...prev, notification_sender_id: event.target.value || null }))}><option value="">请选择</option>{emailSenders.map((item) => <option key={item.id} value={item.id}>{item.email}</option>)}</select></label>
-          <label>品牌名<input value={emailSettings.brand_name || ''} onChange={(event) => setEmailSettings((prev) => ({ ...prev, brand_name: event.target.value }))} /></label>
-          <label>Reply-To<input value={emailSettings.reply_to_email || ''} onChange={(event) => setEmailSettings((prev) => ({ ...prev, reply_to_email: event.target.value }))} /></label>
-          <label className="platform-form-span-2">退订地址<input value={emailSettings.unsubscribe_base_url || ''} onChange={(event) => setEmailSettings((prev) => ({ ...prev, unsubscribe_base_url: event.target.value }))} /></label>
-          <label className="platform-form-span-2">页脚<textarea rows={2} value={emailSettings.footer_text || ''} onChange={(event) => setEmailSettings((prev) => ({ ...prev, footer_text: event.target.value }))} /></label>
-        </div>
-      </section>
+        </section>
 
-      <div className="tenant-email-grid">
-        <section className="card">
+        <section className="email-service-summary tenant-email-summary">
+          <div><span>批次</span><strong>{emailCampaigns.length}</strong></div>
+          <div><span>草稿</span><strong>{draftCampaigns}</strong></div>
+          <div><span>发送中</span><strong>{queuedCampaigns}</strong></div>
+          <div><span>已送达</span><strong>{deliveredTotal}</strong></div>
+          <div><span>可发送联系人</span><strong>{activeContacts}</strong></div>
+        </section>
+
+        <section className="card tenant-email-campaign-card">
           <div className="platform-section-head">
-            <h3>联系人</h3>
-            <button className="btn btn-secondary btn-sm" type="button" onClick={() => void loadEmailData()} disabled={emailLoading}>{emailLoading ? '刷新中...' : '刷新'}</button>
+            <h3>发邮件批次</h3>
+            <button className="btn btn-sm" type="button" onClick={() => void createEmailCampaign()} disabled={emailSaving}>
+              {emailSaving ? '处理中...' : '创建批次'}
+            </button>
           </div>
-          <textarea rows={5} value={emailContactsText} onChange={(event) => setEmailContactsText(event.target.value)} placeholder="user@example.com, 用户名" />
-          <div className="platform-form-actions">
-            <button className="btn btn-sm" type="button" onClick={() => void importEmailContacts()} disabled={emailSaving || !emailContactsText.trim()}>导入联系人</button>
+          <div className="tenant-email-campaign-layout">
+            <div className="platform-form-grid tenant-email-campaign-form">
+              <label>批次名称<input value={emailCampaignForm.name} onChange={(event) => setEmailCampaignForm({ ...emailCampaignForm, name: event.target.value })} /></label>
+              <label>模板<select value={emailCampaignForm.template_id} onChange={(event) => selectEmailCampaignTemplate(event.target.value)}><option value="">不使用模板</option>{emailTemplates.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+              <label>发件邮箱<select value={emailCampaignForm.sender_id} onChange={(event) => setEmailCampaignForm({ ...emailCampaignForm, sender_id: event.target.value })}><option value="">使用默认营销邮箱</option>{emailSenders.map((item) => <option key={item.id} value={item.id}>{item.email}</option>)}</select></label>
+              <label>测试邮箱<input value={emailTestTo} onChange={(event) => setEmailTestTo(event.target.value)} /></label>
+              <label className="platform-form-span-2">邮件标题<input value={emailCampaignForm.subject} onChange={(event) => setEmailCampaignForm({ ...emailCampaignForm, subject: event.target.value })} /></label>
+              <label className="platform-form-span-2">HTML<textarea rows={7} value={emailCampaignForm.html} onChange={(event) => setEmailCampaignForm({ ...emailCampaignForm, html: event.target.value })} /></label>
+            </div>
+            <div className="tenant-email-send-state">
+              <div><span>默认发件邮箱</span><strong>{emailSenders.find((item) => item.id === emailSettings.marketing_sender_id)?.email || '-'}</strong></div>
+              <div><span>模板</span><strong>{emailTemplates.length}</strong></div>
+              <div><span>联系人</span><strong>{activeContacts}</strong></div>
+            </div>
           </div>
-          <div className="tenant-email-list">
-            {emailContacts.map((item) => (
-              <div key={item.id} className="tenant-email-row">
-                <div className="tenant-email-row-main"><strong>{item.display_name || item.email}</strong><span>{item.email}</span></div>
-                <div className="btn-group">
-                  <span className={`status-tag ${item.status === 'subscribed' ? 'success' : 'muted'}`}>{item.status}</span>
-                  {item.status === 'subscribed' ? (
-                    <button className="btn btn-secondary btn-sm" type="button" onClick={() => void updateEmailContactStatus(item, 'unsubscribed')} disabled={emailSaving}>退订</button>
-                  ) : (
-                    <button className="btn btn-secondary btn-sm" type="button" onClick={() => void updateEmailContactStatus(item, 'subscribed')} disabled={emailSaving}>恢复</button>
-                  )}
+          <div className="platform-api-table-wrap tenant-email-campaign-table">
+            <table className="table">
+              <thead><tr><th>批次</th><th>发件邮箱</th><th>状态</th><th>结果</th><th>更新</th><th>操作</th></tr></thead>
+              <tbody>
+                {emailCampaigns.map((item) => (
+                  <tr key={item.id}>
+                    <td><strong>{item.name}</strong></td>
+                    <td>{item.sender_email || '-'}</td>
+                    <td><span className={`status-tag ${emailCampaignStatusClass(item.status)}`}>{emailCampaignStatusLabel(item.status)}</span></td>
+                    <td>{item.delivered_count}/{item.recipient_total}，失败 {item.failed_count}，重试 {item.retry_count || 0}</td>
+                    <td>{formatDateTime(item.updated_at)}</td>
+                    <td>
+                      <div className="btn-group">
+                        <button className="btn btn-secondary btn-sm" type="button" onClick={() => void scheduleEmailCampaign(item.id)} disabled={emailSaving || item.status !== 'draft'}>发送</button>
+                        <button className="btn btn-secondary btn-sm" type="button" onClick={() => void cancelEmailCampaign(item.id)} disabled={emailSaving || !['draft', 'scheduled', 'paused'].includes(item.status)}>取消</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {!emailCampaigns.length && <tr><td colSpan={6}>暂无批次</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <div className="tenant-email-support-grid">
+          <section className="card">
+            <div className="platform-section-head">
+              <h3>联系人</h3>
+              <button className="btn btn-sm" type="button" onClick={() => void importEmailContacts()} disabled={emailSaving || !emailContactsText.trim()}>导入</button>
+            </div>
+            <textarea rows={4} value={emailContactsText} onChange={(event) => setEmailContactsText(event.target.value)} placeholder="user@example.com, 用户名" />
+            <div className="tenant-email-list">
+              {emailContacts.map((item) => (
+                <div key={item.id} className="tenant-email-row">
+                  <div className="tenant-email-row-main"><strong>{item.display_name || item.email}</strong><span>{item.email}</span></div>
+                  <div className="btn-group">
+                    <span className={`status-tag ${item.status === 'subscribed' ? 'success' : 'muted'}`}>{emailContactStatusLabel(item.status)}</span>
+                    {item.status === 'subscribed' ? (
+                      <button className="btn btn-secondary btn-sm" type="button" onClick={() => void updateEmailContactStatus(item, 'unsubscribed')} disabled={emailSaving}>退订</button>
+                    ) : (
+                      <button className="btn btn-secondary btn-sm" type="button" onClick={() => void updateEmailContactStatus(item, 'subscribed')} disabled={emailSaving}>恢复</button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-            {!emailContacts.length && <div className="loading">暂无联系人</div>}
-          </div>
-        </section>
-
-        <section className="card">
-          <div className="platform-section-head"><h3>模板</h3></div>
-          <div className="platform-form-grid single-column">
-            <label>名称<input value={emailTemplateForm.name} onChange={(event) => setEmailTemplateForm({ ...emailTemplateForm, name: event.target.value })} /></label>
-            <label>标题<input value={emailTemplateForm.subject} onChange={(event) => setEmailTemplateForm({ ...emailTemplateForm, subject: event.target.value })} /></label>
-            <label>HTML<textarea rows={6} value={emailTemplateForm.html} onChange={(event) => setEmailTemplateForm({ ...emailTemplateForm, html: event.target.value })} /></label>
-            <button className="btn btn-sm" type="button" onClick={() => void saveEmailTemplate()} disabled={emailSaving}>保存模板</button>
-          </div>
-          <div className="tenant-email-list">
-            {emailTemplates.map((item) => (
-              <div key={item.id} className="tenant-email-row">
-                <div className="tenant-email-row-main"><strong>{item.name}</strong><span>{item.subject}</span></div>
-                <span className="status-tag success">{item.status}</span>
-              </div>
-            ))}
-            {!emailTemplates.length && <div className="loading">暂无模板</div>}
-          </div>
-        </section>
-      </div>
-
-      <section className="card">
-        <div className="platform-section-head"><h3>邮件批次</h3></div>
-        <div className="platform-form-grid">
-          <label>批次名称<input value={emailCampaignForm.name} onChange={(event) => setEmailCampaignForm({ ...emailCampaignForm, name: event.target.value })} /></label>
-          <label>模板<select value={emailCampaignForm.template_id} onChange={(event) => selectEmailCampaignTemplate(event.target.value)}><option value="">不使用模板</option>{emailTemplates.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-          <label>发件邮箱<select value={emailCampaignForm.sender_id} onChange={(event) => setEmailCampaignForm({ ...emailCampaignForm, sender_id: event.target.value })}><option value="">使用默认</option>{emailSenders.map((item) => <option key={item.id} value={item.id}>{item.email}</option>)}</select></label>
-          <label>测试邮箱<input value={emailTestTo} onChange={(event) => setEmailTestTo(event.target.value)} /></label>
-          <label>标题<input value={emailCampaignForm.subject} onChange={(event) => setEmailCampaignForm({ ...emailCampaignForm, subject: event.target.value })} /></label>
-          <label className="platform-form-span-2">HTML<textarea rows={5} value={emailCampaignForm.html} onChange={(event) => setEmailCampaignForm({ ...emailCampaignForm, html: event.target.value })} /></label>
-          <div className="platform-form-actions platform-form-span-2">
-            <button className="btn btn-sm" type="button" onClick={() => void createEmailCampaign()} disabled={emailSaving}>创建批次</button>
-          </div>
-        </div>
-        <div className="platform-api-table-wrap">
-          <table className="table">
-            <thead><tr><th>批次</th><th>发件邮箱</th><th>状态</th><th>结果</th><th>操作</th></tr></thead>
-            <tbody>
-              {emailCampaigns.map((item) => (
-                <tr key={item.id}>
-                  <td>{item.name}</td>
-                  <td>{item.sender_email || '-'}</td>
-                  <td><span className="status-tag">{item.status}</span></td>
-                  <td>{item.delivered_count}/{item.recipient_total}，失败 {item.failed_count}，重试 {item.retry_count || 0}</td>
-                  <td>
-                    <div className="btn-group">
-                      <button className="btn btn-secondary btn-sm" type="button" onClick={() => void scheduleEmailCampaign(item.id)} disabled={emailSaving || item.status !== 'draft'}>发送</button>
-                      <button className="btn btn-secondary btn-sm" type="button" onClick={() => void cancelEmailCampaign(item.id)} disabled={emailSaving || !['draft', 'scheduled', 'paused'].includes(item.status)}>取消</button>
-                    </div>
-                  </td>
-                </tr>
               ))}
-              {!emailCampaigns.length && <tr><td colSpan={5}>暂无批次</td></tr>}
-            </tbody>
-          </table>
+              {!emailContacts.length && <div className="loading">暂无联系人</div>}
+            </div>
+          </section>
+
+          <section className="card">
+            <div className="platform-section-head">
+              <h3>模板</h3>
+              <button className="btn btn-sm" type="button" onClick={() => void saveEmailTemplate()} disabled={emailSaving}>保存模板</button>
+            </div>
+            <div className="platform-form-grid single-column">
+              <label>名称<input value={emailTemplateForm.name} onChange={(event) => setEmailTemplateForm({ ...emailTemplateForm, name: event.target.value })} /></label>
+              <label>标题<input value={emailTemplateForm.subject} onChange={(event) => setEmailTemplateForm({ ...emailTemplateForm, subject: event.target.value })} /></label>
+              <label>HTML<textarea rows={4} value={emailTemplateForm.html} onChange={(event) => setEmailTemplateForm({ ...emailTemplateForm, html: event.target.value })} /></label>
+            </div>
+            <div className="tenant-email-list">
+              {emailTemplates.map((item) => (
+                <div key={item.id} className="tenant-email-row">
+                  <div className="tenant-email-row-main"><strong>{item.name}</strong><span>{item.subject}</span></div>
+                  <span className="status-tag success">{item.status}</span>
+                </div>
+              ))}
+              {!emailTemplates.length && <div className="loading">暂无模板</div>}
+            </div>
+          </section>
+
+          <section className="card">
+            <div className="platform-section-head">
+              <h3>发件设置</h3>
+              <button className="btn btn-sm" type="button" onClick={() => void saveEmailSettings()} disabled={emailSaving}>
+                {emailSaving ? '保存中...' : '保存'}
+              </button>
+            </div>
+            <div className="platform-form-grid single-column">
+              <label>营销发件邮箱<select value={emailSettings.marketing_sender_id || ''} onChange={(event) => setEmailSettings((prev) => ({ ...prev, marketing_sender_id: event.target.value || null }))}><option value="">请选择</option>{emailSenders.map((item) => <option key={item.id} value={item.id}>{item.email}</option>)}</select></label>
+              <label>通知发件邮箱<select value={emailSettings.notification_sender_id || ''} onChange={(event) => setEmailSettings((prev) => ({ ...prev, notification_sender_id: event.target.value || null }))}><option value="">请选择</option>{emailSenders.map((item) => <option key={item.id} value={item.id}>{item.email}</option>)}</select></label>
+              <label>品牌名<input value={emailSettings.brand_name || ''} onChange={(event) => setEmailSettings((prev) => ({ ...prev, brand_name: event.target.value }))} /></label>
+              <label>Reply-To<input value={emailSettings.reply_to_email || ''} onChange={(event) => setEmailSettings((prev) => ({ ...prev, reply_to_email: event.target.value }))} /></label>
+              <label>退订地址<input value={emailSettings.unsubscribe_base_url || ''} onChange={(event) => setEmailSettings((prev) => ({ ...prev, unsubscribe_base_url: event.target.value }))} /></label>
+              <label>页脚<textarea rows={3} value={emailSettings.footer_text || ''} onChange={(event) => setEmailSettings((prev) => ({ ...prev, footer_text: event.target.value }))} /></label>
+            </div>
+          </section>
         </div>
-      </section>
-    </div>
-  );
+      </div>
+    );
+  };
 
   const renderFeedback = () => {
     const appIdForCli = appId || '<app-id>';

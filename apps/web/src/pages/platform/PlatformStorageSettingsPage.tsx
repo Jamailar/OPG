@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import {
   PlatformStorageProviderItem,
   PlatformStorageProviderType,
@@ -68,6 +68,17 @@ function defaultProviderName(providerType: PlatformStorageProviderType): string 
   return 'S3 Storage';
 }
 
+function providerTypeLabel(providerType: PlatformStorageProviderType): string {
+  if (providerType === 'ALIYUN_OSS') return 'Aliyun OSS';
+  if (providerType === 'R2') return 'Cloudflare R2';
+  return 'S3';
+}
+
+function formatDateTime(value?: string): string {
+  if (!value) return '-';
+  return new Date(value).toLocaleString();
+}
+
 function Field({
   label,
   value,
@@ -90,9 +101,11 @@ function Field({
 export default function PlatformStorageSettingsPage() {
   const [providers, setProviders] = useState<PlatformStorageProviderItem[]>([]);
   const [form, setForm] = useState<StorageProviderForm>(EMPTY_STORAGE_FORM);
+  const [editorOpen, setEditorOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [testingProviderId, setTestingProviderId] = useState('');
   const [message, setMessage] = useState<Message>(null);
 
   const loadProviders = async () => {
@@ -102,7 +115,6 @@ export default function PlatformStorageSettingsPage() {
       const storage = await platformApi.listStorageProviders();
       const items = storage.items || [];
       setProviders(items);
-      setForm(toStorageForm(items.find((item) => item.is_default) || items[0]));
     } catch (error: any) {
       setMessage({ type: 'error', text: pickApiErrorMessage(error, '加载对象存储失败') });
     } finally {
@@ -118,15 +130,33 @@ export default function PlatformStorageSettingsPage() {
     setForm((prev) => ({ ...prev, ...patch }));
   };
 
-  const resetForm = (providerType: PlatformStorageProviderType = 'ALIYUN_OSS') => {
+  const resetForm = (providerType: PlatformStorageProviderType = 'ALIYUN_OSS', isDefault = providers.length === 0) => {
     setForm({
       ...EMPTY_STORAGE_FORM,
       provider_type: providerType,
       name: defaultProviderName(providerType),
+      is_default: isDefault,
     });
   };
 
-  const saveProvider = async (event: React.FormEvent) => {
+  const openCreateProvider = () => {
+    resetForm();
+    setMessage(null);
+    setEditorOpen(true);
+  };
+
+  const editProvider = (provider: PlatformStorageProviderItem) => {
+    setForm(toStorageForm(provider));
+    setMessage(null);
+    setEditorOpen(true);
+  };
+
+  const closeEditor = () => {
+    if (saving) return;
+    setEditorOpen(false);
+  };
+
+  const saveProvider = async (event: FormEvent) => {
     event.preventDefault();
     setSaving(true);
     setMessage(null);
@@ -158,6 +188,7 @@ export default function PlatformStorageSettingsPage() {
       setProviders(storage.items || []);
       setForm(toStorageForm(saved));
       setMessage({ type: 'success', text: '对象存储已保存' });
+      setEditorOpen(false);
     } catch (error: any) {
       setMessage({ type: 'error', text: pickApiErrorMessage(error, error?.message || '保存对象存储失败') });
     } finally {
@@ -165,35 +196,30 @@ export default function PlatformStorageSettingsPage() {
     }
   };
 
-  const deleteProvider = async () => {
-    if (!form.id) return;
+  const deleteProvider = async (provider: PlatformStorageProviderItem) => {
     setMessage(null);
     try {
-      await platformApi.deleteStorageProvider(form.id);
+      await platformApi.deleteStorageProvider(provider.id);
       const storage = await platformApi.listStorageProviders();
-      const items = storage.items || [];
-      setProviders(items);
-      setForm(toStorageForm(items.find((item) => item.is_default) || items[0]));
+      setProviders(storage.items || []);
       setMessage({ type: 'success', text: '对象存储已删除' });
     } catch (error: any) {
       setMessage({ type: 'error', text: pickApiErrorMessage(error, '删除对象存储失败') });
     }
   };
 
-  const testProvider = async () => {
-    if (!form.id) {
-      setMessage({ type: 'error', text: '请先保存对象存储' });
-      return;
-    }
+  const testProvider = async (provider: PlatformStorageProviderItem) => {
     setTesting(true);
+    setTestingProviderId(provider.id);
     setMessage(null);
     try {
-      const result = await platformApi.testStorageProvider(form.id);
+      const result = await platformApi.testStorageProvider(provider.id);
       setMessage({ type: result.ok ? 'success' : 'error', text: result.message || '测试完成' });
     } catch (error: any) {
       setMessage({ type: 'error', text: pickApiErrorMessage(error, '测试对象存储失败') });
     } finally {
       setTesting(false);
+      setTestingProviderId('');
     }
   };
 
@@ -208,7 +234,7 @@ export default function PlatformStorageSettingsPage() {
           <button className="btn btn-secondary" type="button" onClick={loadProviders} disabled={loading || saving}>
             刷新
           </button>
-          <button className="btn btn-primary" type="button" onClick={() => resetForm()} disabled={saving}>
+          <button className="btn btn-primary" type="button" onClick={openCreateProvider} disabled={saving}>
             新建
           </button>
         </div>
@@ -216,94 +242,163 @@ export default function PlatformStorageSettingsPage() {
 
       {message && <div className={`alert alert-${message.type}`}>{message.text}</div>}
 
-      {providers.length > 0 && (
-        <div className="platform-chip-row">
-          {providers.map((provider) => (
-            <button
-              className={`platform-chip ${form.id === provider.id ? 'active' : ''}`}
-              key={provider.id}
-              type="button"
-              onClick={() => setForm(toStorageForm(provider))}
-            >
-              {provider.name}
-              {provider.is_default ? ' · 默认' : ''}
-            </button>
-          ))}
+      <section className="platform-card storage-provider-list-card">
+        <div className="platform-api-table-wrap">
+          <table className="table storage-provider-table">
+            <thead>
+              <tr>
+                <th>Bucket</th>
+                <th>类型</th>
+                <th>Endpoint</th>
+                <th>Region</th>
+                <th>CDN</th>
+                <th>状态</th>
+                <th>密钥</th>
+                <th>更新时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {providers.map((provider) => (
+                <tr key={provider.id}>
+                  <td>
+                    <div className="storage-name-cell">
+                      <strong>{provider.config?.bucket || '-'}</strong>
+                      <span>{provider.name}</span>
+                    </div>
+                  </td>
+                  <td>{providerTypeLabel(provider.provider_type)}</td>
+                  <td>
+                    <code>{provider.config?.endpoint || '-'}</code>
+                  </td>
+                  <td>{provider.config?.region || '-'}</td>
+                  <td>{provider.config?.cdn_base_url || '-'}</td>
+                  <td>
+                    <div className="storage-status-stack">
+                      <span className={`status-tag ${provider.is_active ? 'success' : 'warning'}`}>
+                        {provider.is_active ? 'ACTIVE' : 'INACTIVE'}
+                      </span>
+                      {provider.is_default && <span className="status-tag info">默认</span>}
+                    </div>
+                  </td>
+                  <td>
+                    <div className="storage-secret-list">
+                      <span className={provider.secret_status?.access_key_id?.configured ? 'is-configured' : ''}>AK</span>
+                      <span className={provider.secret_status?.access_key_secret?.configured ? 'is-configured' : ''}>SK</span>
+                      <span className={provider.secret_status?.cdn_auth_key?.configured ? 'is-configured' : ''}>CDN</span>
+                    </div>
+                  </td>
+                  <td>{formatDateTime(provider.updated_at)}</td>
+                  <td>
+                    <div className="btn-group storage-row-actions">
+                      <button className="btn btn-secondary btn-sm" type="button" onClick={() => editProvider(provider)}>
+                        编辑
+                      </button>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        type="button"
+                        onClick={() => void testProvider(provider)}
+                        disabled={testing && testingProviderId === provider.id}
+                      >
+                        {testingProviderId === provider.id ? '测试中...' : '测试'}
+                      </button>
+                      <button className="btn btn-danger btn-sm" type="button" onClick={() => void deleteProvider(provider)}>
+                        删除
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {!providers.length && (
+                <tr>
+                  <td colSpan={9}>
+                    <div className="storage-empty-row">{loading ? '加载中...' : '暂无 Bucket'}</div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {editorOpen && (
+        <div className="modal-overlay" onClick={saving ? undefined : closeEditor}>
+          <section className="modal modal-lg storage-editor-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="platform-section-head">
+              <h3>{form.id ? '编辑 Bucket' : '新建 Bucket'}</h3>
+              <button className="btn btn-secondary btn-sm" type="button" onClick={closeEditor} disabled={saving}>
+                关闭
+              </button>
+            </div>
+
+            <form className="platform-form-grid" onSubmit={saveProvider}>
+              <div className="form-group">
+                <label>类型</label>
+                <select
+                  value={form.provider_type}
+                  onChange={(event) => {
+                    const providerType = event.target.value as PlatformStorageProviderType;
+                    updateForm({ provider_type: providerType, name: form.name || defaultProviderName(providerType) });
+                  }}
+                >
+                  <option value="ALIYUN_OSS">Aliyun OSS</option>
+                  <option value="S3">S3</option>
+                  <option value="R2">Cloudflare R2</option>
+                </select>
+              </div>
+              <Field label="名称" value={form.name} onChange={(value) => updateForm({ name: value })} />
+              <Field
+                label="Endpoint"
+                value={form.endpoint}
+                placeholder={form.provider_type === 'ALIYUN_OSS' ? 'oss-cn-shanghai.aliyuncs.com' : 'https://s3.example.com'}
+                onChange={(value) => updateForm({ endpoint: value })}
+              />
+              <Field label="Bucket" value={form.bucket} onChange={(value) => updateForm({ bucket: value })} />
+              <Field
+                label="Region"
+                value={form.region}
+                placeholder={form.provider_type === 'R2' ? 'auto' : 'us-east-1'}
+                onChange={(value) => updateForm({ region: value })}
+              />
+              <Field label="CDN Base URL" value={form.cdn_base_url} placeholder="https://cdn.example.com" onChange={(value) => updateForm({ cdn_base_url: value })} />
+              <Field label="Access Key ID" value={form.access_key_id} onChange={(value) => updateForm({ access_key_id: value })} />
+              <Field label="Access Key Secret" value={form.access_key_secret} onChange={(value) => updateForm({ access_key_secret: value })} />
+              <Field label="CDN Auth Key" value={form.cdn_auth_key} onChange={(value) => updateForm({ cdn_auth_key: value })} />
+              <Field label="Timeout MS" value={form.timeout_ms} onChange={(value) => updateForm({ timeout_ms: value })} />
+              <Field label="CDN Auth Window Seconds" value={form.cdn_auth_window_seconds} onChange={(value) => updateForm({ cdn_auth_window_seconds: value })} />
+              <div className="form-group">
+                <label>CDN Auth</label>
+                <select
+                  value={form.cdn_auth_enabled ? 'true' : 'false'}
+                  onChange={(event) => updateForm({ cdn_auth_enabled: event.target.value === 'true' })}
+                >
+                  <option value="false">关闭</option>
+                  <option value="true">开启</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>默认 Bucket</label>
+                <select
+                  value={form.is_default ? 'true' : 'false'}
+                  onChange={(event) => updateForm({ is_default: event.target.value === 'true' })}
+                >
+                  <option value="true">是</option>
+                  <option value="false">否</option>
+                </select>
+              </div>
+
+              <div className="platform-form-actions platform-form-span-2">
+                <button className="btn btn-primary" type="submit" disabled={saving || loading}>
+                  {saving ? '保存中...' : form.id ? '保存更新' : '创建 Bucket'}
+                </button>
+                <button className="btn btn-secondary" type="button" onClick={closeEditor} disabled={saving}>
+                  取消
+                </button>
+              </div>
+            </form>
+          </section>
         </div>
       )}
-
-      <form className="platform-card" onSubmit={saveProvider}>
-        <div className="platform-form-grid">
-          <div className="form-group">
-            <label>类型</label>
-            <select
-              value={form.provider_type}
-              onChange={(event) => {
-                const providerType = event.target.value as PlatformStorageProviderType;
-                updateForm({ provider_type: providerType, name: form.name || defaultProviderName(providerType) });
-              }}
-            >
-              <option value="ALIYUN_OSS">Aliyun OSS</option>
-              <option value="S3">S3</option>
-              <option value="R2">Cloudflare R2</option>
-            </select>
-          </div>
-          <Field label="名称" value={form.name} onChange={(value) => updateForm({ name: value })} />
-          <Field
-            label="Endpoint"
-            value={form.endpoint}
-            placeholder={form.provider_type === 'ALIYUN_OSS' ? 'oss-cn-shanghai.aliyuncs.com' : 'https://s3.example.com'}
-            onChange={(value) => updateForm({ endpoint: value })}
-          />
-          <Field label="Bucket" value={form.bucket} onChange={(value) => updateForm({ bucket: value })} />
-          <Field
-            label="Region"
-            value={form.region}
-            placeholder={form.provider_type === 'R2' ? 'auto' : 'us-east-1'}
-            onChange={(value) => updateForm({ region: value })}
-          />
-          <Field label="CDN Base URL" value={form.cdn_base_url} placeholder="https://cdn.example.com" onChange={(value) => updateForm({ cdn_base_url: value })} />
-          <Field label="Access Key ID" value={form.access_key_id} onChange={(value) => updateForm({ access_key_id: value })} />
-          <Field label="Access Key Secret" value={form.access_key_secret} onChange={(value) => updateForm({ access_key_secret: value })} />
-          <Field label="CDN Auth Key" value={form.cdn_auth_key} onChange={(value) => updateForm({ cdn_auth_key: value })} />
-          <Field label="Timeout MS" value={form.timeout_ms} onChange={(value) => updateForm({ timeout_ms: value })} />
-          <Field label="CDN Auth Window Seconds" value={form.cdn_auth_window_seconds} onChange={(value) => updateForm({ cdn_auth_window_seconds: value })} />
-          <div className="form-group">
-            <label>CDN Auth</label>
-            <select
-              value={form.cdn_auth_enabled ? 'true' : 'false'}
-              onChange={(event) => updateForm({ cdn_auth_enabled: event.target.value === 'true' })}
-            >
-              <option value="false">关闭</option>
-              <option value="true">开启</option>
-            </select>
-          </div>
-          <div className="form-group">
-            <label>默认 Bucket</label>
-            <select
-              value={form.is_default ? 'true' : 'false'}
-              onChange={(event) => updateForm({ is_default: event.target.value === 'true' })}
-            >
-              <option value="true">是</option>
-              <option value="false">否</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="platform-form-actions">
-          <button className="btn btn-primary" type="submit" disabled={saving || loading}>
-            {saving ? '保存中...' : '保存对象存储'}
-          </button>
-          <button className="btn btn-secondary" type="button" onClick={testProvider} disabled={testing || !form.id}>
-            {testing ? '测试中...' : '测试'}
-          </button>
-          {form.id && (
-            <button className="btn btn-secondary" type="button" onClick={deleteProvider} disabled={saving || loading}>
-              删除
-            </button>
-          )}
-        </div>
-      </form>
     </div>
   );
 }
