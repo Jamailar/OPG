@@ -2699,28 +2699,18 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
         <div className="platform-stat-card"><span>近7天新增</span><strong>{stats?.new_users_7d ?? '-'}</strong></div>
       </div>
 
-      <div className="platform-grid-two tenants-layout">
-        <section className="card">
-          <div className="platform-section-head"><h3>域名配置</h3></div>
-          <div className="platform-detail">
-            {(appDetail?.domains || []).map((item) => (
-              <div key={`${item.domain_type}-${item.domain}`} className="platform-detail-row">
-                <span>{item.domain_type}</span>
-                <strong>{item.domain}</strong>
-              </div>
-            ))}
-            {!appDetail?.domains?.length && <div className="loading">暂无域名配置</div>}
-          </div>
-        </section>
-
-        <section className="card">
-          <div className="platform-section-head"><h3>品牌与邮件设置</h3></div>
-          <div className="platform-detail">
-            <div className="platform-detail-row"><span>品牌名称</span><strong>{appDetail?.settings?.brand_name || '-'}</strong></div>
-            <div className="platform-detail-row"><span>应用地址</span><strong>{appDetail?.settings?.app_url || '-'}</strong></div>
-          </div>
-        </section>
-      </div>
+      <section className="card">
+        <div className="platform-section-head"><h3>域名配置</h3></div>
+        <div className="platform-detail">
+          {(appDetail?.domains || []).map((item) => (
+            <div key={`${item.domain_type}-${item.domain}`} className="platform-detail-row">
+              <span>{item.domain_type}</span>
+              <strong>{item.domain}</strong>
+            </div>
+          ))}
+          {!appDetail?.domains?.length && <div className="loading">暂无域名配置</div>}
+        </div>
+      </section>
 
       {canManagePlatformAppSettings && (
         <>
