@@ -2742,7 +2742,7 @@ export class PlatformAdminService implements OnModuleInit {
     }
     await this.prisma.$executeRawUnsafe(
       `UPDATE users
-       SET role = 'ADMIN', admin_type = $2, updated_at = now()
+       SET role = 'ADMIN', admin_type = $2::"AdminType", updated_at = now()
        WHERE id = $1::uuid`,
       user.id,
       adminType,
