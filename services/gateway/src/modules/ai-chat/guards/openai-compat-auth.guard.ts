@@ -5,6 +5,7 @@ import { AppApiKeysService } from '../../api-keys/app-api-keys.service';
 import { IS_PUBLIC_KEY } from '../../../common/decorators/public.decorator';
 import { hasExplicitAppHint } from '../../../common/utils/auth-route-hints';
 import { AiDebugAuthService } from './ai-debug-auth.service';
+import { DeveloperAuthorizationService, DeveloperScopeKey } from '../../developer-sdk/developer-authorization.service';
 
 const pickCookieValue = (cookieHeader: string | undefined, key: string): string | null => {
   if (!cookieHeader || !key) {
@@ -84,6 +85,7 @@ export class OpenAiCompatAuthGuard implements CanActivate {
     private readonly appApiKeysService: AppApiKeysService,
     private readonly reflector: Reflector,
     private readonly aiDebugAuthService: AiDebugAuthService,
+    private readonly developerAuthorizationService: DeveloperAuthorizationService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -107,6 +109,11 @@ export class OpenAiCompatAuthGuard implements CanActivate {
 
     const appHint = String(request?.params?.app || request?.query?.app || '').trim() || undefined;
 
+    if (token.startsWith('opg_dev_')) {
+      request.user = await this.developerAuthorizationService.authenticateGrant(token, appHint, this.requiredDeveloperScope(request));
+      return true;
+    }
+
     if (token.startsWith('rbx_')) {
       request.user = await this.appApiKeysService.authenticateApiKey(token, appHint);
       return true;
@@ -128,5 +135,17 @@ export class OpenAiCompatAuthGuard implements CanActivate {
     }
     request.user = jwtUser;
     return true;
+  }
+
+  private requiredDeveloperScope(request: any): DeveloperScopeKey {
+    const path = String(request?.path || request?.url || '').toLowerCase();
+    const method = String(request?.method || 'GET').toUpperCase();
+    if (method === 'GET' && (path.includes('/models') || path.includes('/default-models'))) {
+      return 'ai:models:read';
+    }
+    if (path.includes('/videos/')) {
+      return 'ai:video:write';
+    }
+    return 'ai:chat:write';
   }
 }

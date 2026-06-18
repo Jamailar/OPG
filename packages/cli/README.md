@@ -1,10 +1,13 @@
-# opg-dev-cli
+# @jamba/opg-cli
 
 CLI and Codex MCP bridge for OPG backend services.
 
 ```bash
-npm install -g opg-dev-cli
-opg init --base-url https://api.example.com --app my-app
+npm install -g @jamba/opg-cli
+opg init --base-url https://api.example.com
+opg login
+opg app create --name "Demo App" --slug demo
+opg login --app demo
 opg smoke
 opg db smoke
 opg db manifest
@@ -14,20 +17,22 @@ opg codex install
 
 ## Environment
 
-The CLI reads `.env.local` and `.opg/opg.config.json`.
+The CLI reads `.opg/credentials.json`, `.env.local`, and `.opg/opg.config.json`.
 
 - `OPG_BASE_URL`: Gateway base URL
 - `OPG_APP_SLUG`: App slug owned by the current tenant
-- `OPG_API_KEY`: App API key created in the OPG developer console
+- `OPG_API_KEY`: Optional explicit Developer Grant (`opg_dev_...`) for CI or non-interactive runs
 - `OPG_PLATFORM_TOKEN`: Platform admin JWT for global control-plane tools
 
-`opg codex install` writes a Codex MCP config template that references `${OPG_API_KEY}` and `${OPG_PLATFORM_TOKEN}` instead of writing secret values.
+`opg login` opens a browser authorization URL and stores a global platform login in `.opg/credentials.json`. After an app exists, `opg login --app <slug>` creates an app-scoped Developer Grant for SDK, database, AI, upload, and video operations. `opg codex install` writes a Codex MCP config template without embedding secret values.
 
 ## Platform Control Plane
 
 App SDK operations stay app-scoped. Global operations use the platform token:
 
 ```bash
+opg app list
+opg app create --name "Demo App" --slug demo
 opg platform apps list
 opg platform apps create --json '{"name":"Demo App","slug":"demo"}'
 opg platform runtime get

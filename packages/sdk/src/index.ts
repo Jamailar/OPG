@@ -8,6 +8,15 @@ export type OpgClientOptions = {
   fetch?: typeof fetch;
 };
 
+export type OpgLocalConfigOptions = {
+  cwd?: string;
+  profile?: string;
+};
+
+export type OpgResolvedLocalConfig = OpgClientOptions & {
+  profile: string;
+};
+
 export type OpgRequestOptions = {
   method?: string;
   query?: Record<string, string | number | boolean | undefined | null>;
@@ -581,6 +590,92 @@ export function createOpgPlatformClient(options: OpgClientOptions): OpgPlatformC
       usageLogs: (query) => request('/ai/usage/logs', { query }),
     },
   };
+}
+
+export async function readOpgLocalConfig(options: OpgLocalConfigOptions = {}): Promise<OpgResolvedLocalConfig> {
+  const [{ readFile }, path] = await Promise.all([
+    import('node:fs/promises'),
+    import('node:path'),
+  ]);
+  const cwd = options.cwd || process.cwd();
+  const readJson = async <T>(relativePath: string, fallback: T): Promise<T> => {
+    try {
+      return JSON.parse(await readFile(path.resolve(cwd, relativePath), 'utf8')) as T;
+    } catch {
+      return fallback;
+    }
+  };
+  const local = await readJson<{
+    baseUrl?: string;
+    app?: string;
+    apiKey?: string;
+    platformToken?: string;
+    profile?: string;
+  }>('.opg/opg.config.json', {});
+  const credentials = await readJson<{
+    currentProfile?: string;
+    profiles?: Record<string, {
+      baseUrl?: string;
+      app?: string;
+      apiKey?: string;
+      platformToken?: string;
+    }>;
+  }>('.opg/credentials.json', {});
+  const envFile = await readOpgDotEnvLocal(cwd);
+  const profile = String(options.profile || local.profile || credentials.currentProfile || 'default').trim() || 'default';
+  const credentialProfile = credentials.profiles?.[profile] || {};
+  const baseUrl = process.env.OPG_BASE_URL || envFile.OPG_BASE_URL || local.baseUrl || credentialProfile.baseUrl || '';
+  const app = process.env.OPG_APP_SLUG || envFile.OPG_APP_SLUG || local.app || credentialProfile.app || '';
+  const apiKey = process.env.OPG_API_KEY || envFile.OPG_API_KEY || credentialProfile.apiKey || local.apiKey || '';
+  const platformToken = process.env.OPG_PLATFORM_TOKEN || envFile.OPG_PLATFORM_TOKEN || credentialProfile.platformToken || local.platformToken || '';
+
+  if (!baseUrl) {
+    throw new Error('Missing OPG base URL. Run "opg init --base-url <url> --app <slug>" first.');
+  }
+  return {
+    baseUrl,
+    app,
+    apiKey,
+    platformToken,
+    profile,
+  };
+}
+
+export async function createOpgClientFromLocalConfig(options: OpgLocalConfigOptions = {}) {
+  return createOpgClient(await readOpgLocalConfig(options));
+}
+
+async function readOpgDotEnvLocal(cwd: string): Promise<Record<string, string>> {
+  const [{ readFile }, path] = await Promise.all([
+    import('node:fs/promises'),
+    import('node:path'),
+  ]);
+  try {
+    const content = await readFile(path.resolve(cwd, '.env.local'), 'utf8');
+    const values: Record<string, string> = {};
+    for (const line of content.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) {
+        continue;
+      }
+      const separator = trimmed.indexOf('=');
+      if (separator <= 0) {
+        continue;
+      }
+      const key = trimmed.slice(0, separator).trim();
+      let value = trimmed.slice(separator + 1).trim();
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
+        value = value.slice(1, -1);
+      }
+      values[key] = value;
+    }
+    return values;
+  } catch {
+    return {};
+  }
 }
 
 export class OpgApiError extends Error {

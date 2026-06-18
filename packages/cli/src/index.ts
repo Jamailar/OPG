@@ -1,7 +1,10 @@
 #!/usr/bin/env node
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -9,9 +12,27 @@ import { createOpgClient, createOpgPlatformClient, type OpgClient, type OpgPlatf
 
 type CliConfig = {
   baseUrl: string;
-  app: string;
+  app?: string;
   apiKey?: string;
   platformToken?: string;
+  platformRefreshToken?: string;
+  profile?: string;
+};
+
+type CliCredentials = {
+  currentProfile?: string;
+  profiles?: Record<string, {
+    baseUrl?: string;
+    app?: string;
+    apiKey?: string;
+    platformToken?: string;
+    platformRefreshToken?: string;
+    apiKeyId?: string;
+    grantId?: string;
+    keyPrefix?: string;
+    keyLast4?: string;
+    updatedAt?: string;
+  }>;
 };
 
 const args = process.argv.slice(2);
@@ -27,6 +48,10 @@ async function main() {
     await initProject(parseFlags(args.slice(1)));
     return;
   }
+  if (command === 'login') {
+    await loginProject(parseFlags(args.slice(1)));
+    return;
+  }
   if (command === 'manifest') {
     console.log(JSON.stringify(await getClientFromFlags(args.slice(1)).sdk.manifest(), null, 2));
     return;
@@ -37,6 +62,10 @@ async function main() {
   }
   if (command === 'db' || command === 'database') {
     await runDatabaseCommand(args.slice(1));
+    return;
+  }
+  if (command === 'app' || command === 'apps') {
+    await runAppCommand(args.slice(1));
     return;
   }
   if (command === 'platform') {
@@ -55,11 +84,11 @@ async function main() {
 }
 
 async function initProject(flags: Record<string, string>) {
-  const config = readConfigFromFlags(flags);
+  const config = readBaseConfig(flags);
   await mkdir('.opg', { recursive: true });
   await writeFile(
     '.opg/opg.config.json',
-    `${JSON.stringify({ baseUrl: config.baseUrl, app: config.app, profile: flags.profile || 'default' }, null, 2)}\n`,
+    `${JSON.stringify({ baseUrl: config.baseUrl, ...(config.app ? { app: config.app } : {}), profile: flags.profile || 'default' }, null, 2)}\n`,
   );
 
   if (!existsSync('.env.local')) {
@@ -67,15 +96,21 @@ async function initProject(flags: Record<string, string>) {
       '.env.local',
       [
         `OPG_BASE_URL=${config.baseUrl}`,
-        `OPG_APP_SLUG=${config.app}`,
-        `OPG_API_KEY=${config.apiKey || 'rbx_replace_me'}`,
+        ...(config.app ? [`OPG_APP_SLUG=${config.app}`, `OPG_API_KEY=${config.apiKey || 'rbx_replace_me'}`] : []),
         '',
       ].join('\n'),
     );
   }
 
+  if (!config.app) {
+    console.log('OPG platform profile written.');
+    console.log('Next: opg login');
+    console.log('Then: opg app create --name "Demo App" --slug demo');
+    return;
+  }
+
   if (flags['skip-manifest'] !== 'true' && flags['skip-manifest'] !== '1') {
-    const client = createOpgClient(config);
+    const client = createOpgClient(requireAppConfig(config, 'Missing OPG app slug.'));
     try {
       const manifest = await client.sdk.manifest();
       await writeFile('.opg/manifest.json', `${JSON.stringify(manifest, null, 2)}\n`);
@@ -89,18 +124,116 @@ async function initProject(flags: Record<string, string>) {
   console.log('Next: npm install opg-sdk');
 }
 
+async function loginProject(flags: Record<string, string>) {
+  const local = await readOptionalLocalConfig();
+  const config = {
+    baseUrl: flags.baseUrl || flags['base-url'] || local.baseUrl || '',
+    app: flags.app || local.app || '',
+    apiKey: '',
+    platformToken: '',
+    profile: flags.profile || local.profile || 'default',
+  };
+  if (!config.baseUrl) {
+    throw new Error('Missing OPG base URL. Run "opg init --base-url <url> --app <slug>" first, or pass --base-url.');
+  }
+  const profile = flags.profile || config.profile || 'default';
+  const callback = await createLocalCallbackServer(Number(flags.timeout || 120) * 1000);
+  try {
+    const session = await postJson<{
+      state: string;
+      login_url: string;
+      expires_at: string;
+    }>(config.app
+      ? buildTenantUrl(config.baseUrl, config.app, '/sdk/auth/sessions')
+      : buildApiUrl(config.baseUrl, '/sdk/auth/sessions'), {
+      callback_url: callback.url,
+      client: flags.client || '@jamba/opg-cli',
+      profile,
+      web_url: flags.webUrl || flags['web-url'] || config.baseUrl,
+      scopes: parseScopesFlag(flags),
+    });
+
+    console.log(`Open this login URL to authorize OPG access:\n${session.login_url}\n`);
+    if (flags.open !== 'false' && flags.open !== '0') {
+      openBrowser(session.login_url);
+    }
+
+    const received = await callback.wait;
+    if (received.state !== session.state) {
+      throw new Error('SDK login state mismatch. Please run opg login again.');
+    }
+
+    const token = await postJson<{
+      ok: boolean;
+      app: { slug: string };
+      profile: string;
+      auth: {
+        api_key?: string;
+        api_key_id?: string;
+        grant_id?: string;
+        key_prefix?: string;
+        key_last4?: string;
+        platform_token?: string;
+        platform_refresh_token?: string;
+      };
+      user?: Record<string, unknown>;
+    }>(config.app
+      ? buildTenantUrl(config.baseUrl, config.app, '/sdk/auth/token')
+      : buildApiUrl(config.baseUrl, '/sdk/auth/token'), {
+      state: received.state,
+      code: received.code,
+    });
+
+    if (token.auth?.platform_token) {
+      await writeLocalPlatformCredentials({
+        baseUrl: config.baseUrl,
+        app: config.app || local.app || '',
+        profile,
+        platformToken: token.auth.platform_token,
+        platformRefreshToken: token.auth.platform_refresh_token,
+      });
+      console.log(`OPG platform login saved (${profile}).`);
+      console.log('Next: opg app list or opg app create --name "Demo App" --slug demo');
+    } else {
+      await writeLocalLoginCredentials({
+        baseUrl: config.baseUrl,
+        app: token.app?.slug || config.app || '',
+        profile,
+        apiKey: token.auth.api_key || '',
+        apiKeyId: token.auth.api_key_id,
+        grantId: token.auth.grant_id,
+        keyPrefix: token.auth.key_prefix,
+        keyLast4: token.auth.key_last4,
+      });
+      console.log(`OPG SDK login saved for app ${token.app?.slug || config.app} (${profile}).`);
+      console.log('Next: opg db smoke');
+    }
+  } finally {
+    callback.close();
+  }
+}
+
 async function installCodex(flags: Record<string, string>) {
-  const config = readConfigFromFlags(flags);
+  const local = await readOptionalLocalConfig();
+  const config = requireAppConfig({
+    baseUrl: flags.baseUrl || flags['base-url'] || local.baseUrl || '',
+    app: flags.app || local.app || '',
+    apiKey: flags.apiKey || flags['api-key'] || local.apiKey || '',
+    platformToken: flags.platformToken || flags['platform-token'] || local.platformToken || '',
+    profile: flags.profile || local.profile || 'default',
+  }, 'Missing OPG app slug. Run "opg init --base-url <url> --app <slug>" first, or pass --app.');
+  if (!config.baseUrl) {
+    throw new Error('Missing OPG base URL. Run "opg init --base-url <url> --app <slug>" first, or pass --base-url.');
+  }
   await mkdir('.opg', { recursive: true });
   const mcpConfig = {
     mcpServers: {
       opg: {
         command: 'npx',
-        args: ['-y', 'opg-dev-cli', 'mcp'],
+        args: ['-y', '@jamba/opg-cli', 'mcp'],
         env: {
           OPG_BASE_URL: config.baseUrl,
           OPG_APP_SLUG: config.app,
-          OPG_API_KEY: '${OPG_API_KEY}',
           OPG_PLATFORM_TOKEN: '${OPG_PLATFORM_TOKEN}',
         },
       },
@@ -108,7 +241,7 @@ async function installCodex(flags: Record<string, string>) {
   };
   await writeFile('.opg/codex-mcp.json', `${JSON.stringify(mcpConfig, null, 2)}\n`);
   console.log('Codex MCP config written to .opg/codex-mcp.json.');
-  console.log('Keep OPG_API_KEY in your shell or project secret store; do not commit real keys.');
+  console.log(`Run "opg login --app ${config.app}" first so the MCP server can read the app-scoped SDK credential locally.`);
 }
 
 async function runDatabaseCommand(commandArgs: string[]) {
@@ -178,6 +311,61 @@ async function runDatabaseCommand(commandArgs: string[]) {
   }
 
   throw new Error(`Unknown database command: ${subcommand}`);
+}
+
+async function runAppCommand(commandArgs: string[]) {
+  const action = commandArgs[0] || 'list';
+  const flags = parseFlags(commandArgs.slice(1));
+  const client = await getPlatformClientFromLocalConfigWithFlagOverrides(flags);
+
+  if (action === 'list' || action === 'ls') {
+    printJson(await client.apps.list({ includeInactive: flags.includeInactive !== 'false' && flags['include-inactive'] !== 'false' }));
+    return;
+  }
+
+  if (action === 'create') {
+    const payload = flags.json || flags.body
+      ? parseJsonPayload(flags)
+      : {
+          name: flags.name || flags.slug || '',
+          slug: flags.slug || '',
+          status: flags.status || 'ACTIVE',
+        };
+    if (!payload.name || !payload.slug) {
+      throw new Error('Missing app name or slug. Use: opg app create --name "Demo App" --slug demo');
+    }
+    const created = await client.apps.create(payload);
+    const app = pickAppPayload(created);
+    if (app?.slug) {
+      await writeProjectAppConfig({
+        baseUrl: flags.baseUrl || flags['base-url'] || (await readOptionalLocalConfig()).baseUrl || '',
+        app: app.slug,
+        profile: flags.profile || (await readOptionalLocalConfig()).profile || 'default',
+      });
+    }
+    printJson(created);
+    if (app?.slug) {
+      console.error(`Current OPG app set to ${app.slug}. Run "opg login --app ${app.slug}" to create an app-scoped SDK grant.`);
+    }
+    return;
+  }
+
+  if (action === 'use') {
+    const app = flags.app || flags.slug || commandArgs.find((item, index) => index > 0 && !item.startsWith('--')) || '';
+    if (!app) {
+      throw new Error('Missing app slug. Use: opg app use <slug>');
+    }
+    const local = await readOptionalLocalConfig();
+    await writeProjectAppConfig({
+      baseUrl: flags.baseUrl || flags['base-url'] || local.baseUrl || '',
+      app,
+      profile: flags.profile || local.profile || 'default',
+    });
+    console.log(`Current OPG app set to ${app}.`);
+    return;
+  }
+
+  throw new Error(`Unknown app command: ${action}`);
 }
 
 async function runPlatformCommand(commandArgs: string[]) {
@@ -912,10 +1100,18 @@ async function getClientFromLocalConfigWithFlagOverrides(flags: Record<string, s
 
 async function getPlatformClientFromLocalConfigWithFlagOverrides(flags: Record<string, string>): Promise<OpgPlatformClient> {
   const local = await readOptionalLocalConfig();
-  return createOpgPlatformClient({
+  const refreshed = await refreshPlatformTokenIfNeeded({
     baseUrl: flags.baseUrl || flags['base-url'] || local.baseUrl,
+    app: flags.app || local.app,
     apiKey: flags.apiKey || flags['api-key'] || local.apiKey,
     platformToken: flags.platformToken || flags['platform-token'] || local.platformToken,
+    platformRefreshToken: local.platformRefreshToken,
+    profile: local.profile,
+  });
+  return createOpgPlatformClient({
+    baseUrl: refreshed.baseUrl,
+    apiKey: flags.apiKey || flags['api-key'] || local.apiKey,
+    platformToken: flags.platformToken || flags['platform-token'] || refreshed.platformToken,
   });
 }
 
@@ -930,13 +1126,26 @@ async function readOptionalLocalConfig(): Promise<Record<string, string>> {
   } catch {
     local = {};
   }
+  const credentials = await readCredentials();
+  const profile = String(local.profile || credentials.currentProfile || 'default').trim() || 'default';
+  const credentialProfile = credentials.profiles?.[profile] || {};
   const envFile = await readDotEnvLocal();
   return {
-    baseUrl: process.env.OPG_BASE_URL || envFile.OPG_BASE_URL || local.baseUrl || '',
-    app: process.env.OPG_APP_SLUG || envFile.OPG_APP_SLUG || local.app || '',
-    apiKey: process.env.OPG_API_KEY || envFile.OPG_API_KEY || local.apiKey || '',
-    platformToken: process.env.OPG_PLATFORM_TOKEN || envFile.OPG_PLATFORM_TOKEN || local.platformToken || '',
+    baseUrl: process.env.OPG_BASE_URL || envFile.OPG_BASE_URL || local.baseUrl || credentialProfile.baseUrl || '',
+    app: process.env.OPG_APP_SLUG || envFile.OPG_APP_SLUG || local.app || credentialProfile.app || '',
+    apiKey: process.env.OPG_API_KEY || envFile.OPG_API_KEY || credentialProfile.apiKey || local.apiKey || '',
+    platformToken: process.env.OPG_PLATFORM_TOKEN || envFile.OPG_PLATFORM_TOKEN || credentialProfile.platformToken || local.platformToken || '',
+    platformRefreshToken: credentialProfile.platformRefreshToken || local.platformRefreshToken || '',
+    profile,
   };
+}
+
+async function readCredentials(): Promise<CliCredentials> {
+  try {
+    return JSON.parse(await readFile(path.resolve('.opg/credentials.json'), 'utf8')) as CliCredentials;
+  } catch {
+    return {};
+  }
 }
 
 async function readDotEnvLocal(): Promise<Record<string, string>> {
@@ -980,7 +1189,7 @@ function readBaseConfig(flags: Record<string, string>): CliConfig {
   if (!baseUrl) {
     throw new Error('Missing OPG base URL. Pass --base-url or set OPG_BASE_URL.');
   }
-  return { baseUrl, app, apiKey, platformToken };
+  return { baseUrl, app, apiKey, platformToken, profile: flags.profile || 'default' };
 }
 
 function requireAppConfig(config: CliConfig, message: string): CliConfig {
@@ -1037,6 +1246,27 @@ function parseScalar(value: string): string | number | boolean | null {
   return normalized;
 }
 
+function pickAppPayload(value: unknown): { id?: string; slug?: string; name?: string } | null {
+  const root = value as any;
+  const candidates = [
+    root?.app,
+    root?.data?.app,
+    root?.item,
+    root?.data,
+    root,
+  ];
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === 'object' && candidate.slug) {
+      return {
+        id: candidate.id ? String(candidate.id) : undefined,
+        slug: String(candidate.slug),
+        name: candidate.name ? String(candidate.name) : undefined,
+      };
+    }
+  }
+  return null;
+}
+
 function requirePlatformAppId(flags: Record<string, string>) {
   const appId = flags.appId || flags['app-id'] || '';
   if (!appId) {
@@ -1084,10 +1314,269 @@ console.log(models);
 `;
 }
 
+function buildTenantUrl(baseUrl: string, app: string, route: string) {
+  return `${baseUrl.replace(/\/+$/, '')}/${encodeURIComponent(app)}/v1${route}`;
+}
+
+function buildApiUrl(baseUrl: string, route: string) {
+  return `${baseUrl.replace(/\/+$/, '')}/api/v1${route}`;
+}
+
+async function postJson<T>(url: string, body: Record<string, unknown>): Promise<T> {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : {};
+  if (!response.ok) {
+    throw new Error(data?.message || data?.detail || `Request failed (${response.status})`);
+  }
+  return data?.data || data;
+}
+
+async function refreshPlatformTokenIfNeeded(config: CliConfig): Promise<CliConfig> {
+  if (!config.baseUrl || !config.platformToken || !config.platformRefreshToken) {
+    return config;
+  }
+  if (!isJwtExpiring(config.platformToken, 60)) {
+    return config;
+  }
+  const refreshed = await postJson<{
+    access_token?: string;
+    refresh_token?: string;
+  }>(buildApiUrl(config.baseUrl, '/auth/refresh'), {
+    refresh_token: config.platformRefreshToken,
+  });
+  if (!refreshed.access_token) {
+    return config;
+  }
+  await writeLocalPlatformCredentials({
+    baseUrl: config.baseUrl,
+    app: config.app || '',
+    profile: config.profile || 'default',
+    platformToken: refreshed.access_token,
+    platformRefreshToken: refreshed.refresh_token || config.platformRefreshToken,
+  });
+  return {
+    ...config,
+    platformToken: refreshed.access_token,
+    platformRefreshToken: refreshed.refresh_token || config.platformRefreshToken,
+  };
+}
+
+function isJwtExpiring(token: string, skewSeconds: number) {
+  const parts = String(token || '').split('.');
+  if (parts.length < 2) {
+    return false;
+  }
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')) as { exp?: number };
+    if (!payload.exp) {
+      return false;
+    }
+    return payload.exp * 1000 <= Date.now() + skewSeconds * 1000;
+  } catch {
+    return false;
+  }
+}
+
+async function writeLocalLoginCredentials(input: {
+  baseUrl: string;
+  app: string;
+  profile: string;
+  apiKey: string;
+  apiKeyId?: string;
+  grantId?: string;
+  keyPrefix?: string;
+  keyLast4?: string;
+}) {
+  await mkdir('.opg', { recursive: true });
+  const existing = await readCredentials();
+  const profile = input.profile || 'default';
+  const next: CliCredentials = {
+    currentProfile: profile,
+    profiles: {
+      ...(existing.profiles || {}),
+      [profile]: {
+        baseUrl: input.baseUrl,
+        app: input.app,
+        apiKey: input.apiKey,
+        platformToken: existing.profiles?.[profile]?.platformToken,
+        platformRefreshToken: existing.profiles?.[profile]?.platformRefreshToken,
+        apiKeyId: input.apiKeyId,
+        grantId: input.grantId,
+        keyPrefix: input.keyPrefix,
+        keyLast4: input.keyLast4,
+        updatedAt: new Date().toISOString(),
+      },
+    },
+  };
+  await writeFile('.opg/credentials.json', `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
+  await chmod('.opg/credentials.json', 0o600).catch(() => undefined);
+  await writeFile(
+    '.opg/opg.config.json',
+    `${JSON.stringify({ baseUrl: input.baseUrl, app: input.app, profile }, null, 2)}\n`,
+  );
+}
+
+async function writeLocalPlatformCredentials(input: {
+  baseUrl: string;
+  app?: string;
+  profile: string;
+  platformToken: string;
+  platformRefreshToken?: string;
+}) {
+  await mkdir('.opg', { recursive: true });
+  const existing = await readCredentials();
+  const profile = input.profile || 'default';
+  const previous = existing.profiles?.[profile] || {};
+  const next: CliCredentials = {
+    currentProfile: profile,
+    profiles: {
+      ...(existing.profiles || {}),
+      [profile]: {
+        ...previous,
+        baseUrl: input.baseUrl,
+        app: input.app || previous.app || '',
+        platformToken: input.platformToken,
+        platformRefreshToken: input.platformRefreshToken || previous.platformRefreshToken,
+        updatedAt: new Date().toISOString(),
+      },
+    },
+  };
+  await writeFile('.opg/credentials.json', `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
+  await chmod('.opg/credentials.json', 0o600).catch(() => undefined);
+  await writeFile(
+    '.opg/opg.config.json',
+    `${JSON.stringify({ baseUrl: input.baseUrl, ...(input.app || previous.app ? { app: input.app || previous.app } : {}), profile }, null, 2)}\n`,
+  );
+}
+
+async function writeProjectAppConfig(input: {
+  baseUrl: string;
+  app: string;
+  profile: string;
+}) {
+  if (!input.baseUrl) {
+    throw new Error('Missing OPG base URL. Run "opg init --base-url <url>" first, or pass --base-url.');
+  }
+  await mkdir('.opg', { recursive: true });
+  const existing = await readCredentials();
+  const profile = input.profile || existing.currentProfile || 'default';
+  const previous = existing.profiles?.[profile] || {};
+  const next: CliCredentials = {
+    currentProfile: profile,
+    profiles: {
+      ...(existing.profiles || {}),
+      [profile]: {
+        ...previous,
+        baseUrl: input.baseUrl,
+        app: input.app,
+        updatedAt: new Date().toISOString(),
+      },
+    },
+  };
+  await writeFile('.opg/credentials.json', `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
+  await chmod('.opg/credentials.json', 0o600).catch(() => undefined);
+  await writeFile(
+    '.opg/opg.config.json',
+    `${JSON.stringify({ baseUrl: input.baseUrl, app: input.app, profile }, null, 2)}\n`,
+  );
+}
+
+async function createLocalCallbackServer(timeoutMs: number): Promise<{
+  url: string;
+  wait: Promise<{ state: string; code: string }>;
+  close: () => void;
+}> {
+  let server: Server | null = null;
+  let timeout: NodeJS.Timeout | null = null;
+  let settle: (value: { state: string; code: string }) => void = () => undefined;
+  let reject: (reason: unknown) => void = () => undefined;
+
+  const wait = new Promise<{ state: string; code: string }>((resolve, rejectPromise) => {
+    settle = resolve;
+    reject = rejectPromise;
+  });
+
+  server = createServer((req, res) => {
+    try {
+      const requestUrl = new URL(req.url || '/', 'http://127.0.0.1');
+      const state = requestUrl.searchParams.get('state') || '';
+      const code = requestUrl.searchParams.get('code') || '';
+      if (!state || !code) {
+        res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Missing SDK login code.');
+        reject(new Error('Missing SDK login code.'));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end('<!doctype html><title>OPG SDK Login</title><p>OPG SDK login complete. You can close this window.</p>');
+      settle({ state, code });
+    } catch (error) {
+      res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('SDK login callback failed.');
+      reject(error);
+    }
+  });
+
+  await new Promise<void>((resolve, rejectListen) => {
+    server!.once('error', rejectListen);
+    server!.listen(0, '127.0.0.1', () => resolve());
+  });
+  const address = server.address() as AddressInfo;
+  timeout = setTimeout(() => reject(new Error('SDK login timed out. Run opg login again.')), timeoutMs);
+
+  return {
+    url: `http://127.0.0.1:${address.port}/callback`,
+    wait: wait.finally(() => {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+    }),
+    close: () => {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+      server?.close();
+    },
+  };
+}
+
+function openBrowser(url: string) {
+  const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';
+  const args = process.platform === 'win32' ? ['/c', 'start', '', url] : [url];
+  const child = spawn(opener, args, {
+    detached: true,
+    stdio: 'ignore',
+  });
+  child.on('error', () => undefined);
+  child.unref();
+}
+
+function parseScopesFlag(flags: Record<string, string>) {
+  const raw = flags.scopes || flags.scope || '';
+  if (!raw) {
+    return undefined;
+  }
+  return raw.split(',').map((item) => item.trim()).filter(Boolean);
+}
+
 function printHelp() {
   console.log(`OPG CLI
 
 Commands:
+  opg init --base-url <url>
+  opg login --base-url <url>
+  opg app list
+  opg app create --name "Demo App" --slug demo
+  opg app use <slug>
+  opg login --app <slug> [--scopes <csv>]
   opg init --base-url <url> --app <slug> [--api-key <key>]
   opg init --base-url <url> --app <slug> --skip-manifest true
   opg manifest --base-url <url> --app <slug>
@@ -1103,7 +1592,7 @@ Commands:
   opg db describe <table> --base-url <url> --app <slug> --api-key <key>
   opg db query --sql "SELECT * FROM app_demo__customers" --base-url <url> --app <slug> --api-key <key>
   opg db execute --sql "CREATE TABLE ..." --dry-run true --base-url <url> --app <slug> --api-key <key>
-  opg codex install --base-url <url> --app <slug> [--api-key <key>]
+  opg codex install [--base-url <url> --app <slug>]
   opg mcp
 `);
 }

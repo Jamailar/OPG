@@ -6,6 +6,7 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+.opg/
 
 # Dependencies
 node_modules/
@@ -35,4 +36,3 @@ temp/
 .idea/
 .vscode/
 *.swp
-

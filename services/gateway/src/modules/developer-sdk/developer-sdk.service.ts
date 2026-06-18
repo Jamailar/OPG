@@ -1,6 +1,7 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { PRISMA_CLIENT } from '../../config/database.module';
+import { DEFAULT_DEVELOPER_LOGIN_SCOPES, DEVELOPER_SCOPE_CATALOG } from './developer-authorization.service';
 
 type AppRow = {
   id: string;
@@ -39,7 +40,7 @@ export class DeveloperSdkService {
       manifest_version: SDK_MANIFEST_VERSION,
       sdk: {
         package: 'opg-sdk',
-        cli_package: 'opg-dev-cli',
+        cli_package: '@jamba/opg-cli',
         min_node_version: '22',
       },
       app: {
@@ -51,8 +52,18 @@ export class DeveloperSdkService {
         bare_api_base_url: bareBaseUrl,
       },
       auth: {
-        supported: ['app_api_key', 'jwt'],
-        api_key_prefix: 'rbx_',
+        supported: ['platform_browser_login', 'browser_login', 'developer_grant', 'app_api_key', 'jwt'],
+        developer_grant_prefix: 'opg_dev_',
+        legacy_api_key_prefix: 'rbx_',
+        scopes: DEVELOPER_SCOPE_CATALOG,
+        browser_login: {
+          platform_session_route: '/api/v1/sdk/auth/sessions',
+          session_route: '/sdk/auth/sessions',
+          authorize_route: '/sdk/auth/sessions/{state}/authorize',
+          token_route: '/sdk/auth/token',
+          ttl_seconds: 600,
+          default_scopes: DEFAULT_DEVELOPER_LOGIN_SCOPES,
+        },
         headers: {
           primary: 'Authorization: Bearer <OPG_API_KEY>',
           alternate: 'x-opg-api-key: <OPG_API_KEY>',
@@ -79,6 +90,9 @@ export class DeveloperSdkService {
         sdk_openapi: '/sdk/openapi.json',
         sdk_examples: '/sdk/examples',
         sdk_smoke_test: '/sdk/smoke-test',
+        sdk_login_sessions: '/sdk/auth/sessions',
+        sdk_login_authorize: '/sdk/auth/sessions/{state}/authorize',
+        sdk_login_token: '/sdk/auth/token',
         database_manifest: '/sdk/database/manifest',
         database_tables: '/sdk/database/tables',
         database_table: '/sdk/database/tables/{table}',
@@ -107,10 +121,10 @@ export class DeveloperSdkService {
         user_ai_usage_logs: '/users/me/ai-usage-logs',
       },
       codex: {
-        install_command: `npx -y opg-dev-cli codex install --base-url ${options.baseUrl} --app ${app.slug}`,
+        install_command: `npx -y @jamba/opg-cli init --base-url ${options.baseUrl}\nnpx -y @jamba/opg-cli login\nnpx -y @jamba/opg-cli app use ${app.slug}\nnpx -y @jamba/opg-cli login --app ${app.slug}\nnpx -y @jamba/opg-cli codex install`,
         mcp_server_command: 'npx',
-        mcp_server_args: ['-y', 'opg-dev-cli', 'mcp'],
-        environment: ['OPG_BASE_URL', 'OPG_APP_SLUG', 'OPG_API_KEY'],
+        mcp_server_args: ['-y', '@jamba/opg-cli', 'mcp'],
+        environment: ['OPG_BASE_URL', 'OPG_APP_SLUG'],
       },
     };
   }
@@ -165,7 +179,7 @@ export class DeveloperSdkService {
     const env = [
       `OPG_BASE_URL=${options.baseUrl.replace(/\/+$/, '')}`,
       `OPG_APP_SLUG=${manifest.app.slug}`,
-      'OPG_API_KEY=rbx_replace_me',
+      '# Run: npx -y @jamba/opg-cli login',
     ].join('\n');
 
     const node = `import { createOpgClient } from 'opg-sdk';
@@ -194,8 +208,11 @@ export async function runAssistant(prompt: string) {
   return opg.agents.run('assistant', { input: { prompt } });
 }`;
 
-    const codex = `npx -y opg-dev-cli init --base-url ${options.baseUrl} --app ${manifest.app.slug}
-npx -y opg-dev-cli codex install --base-url ${options.baseUrl} --app ${manifest.app.slug}`;
+    const codex = `npx -y @jamba/opg-cli init --base-url ${options.baseUrl}
+npx -y @jamba/opg-cli login
+npx -y @jamba/opg-cli app use ${manifest.app.slug}
+npx -y @jamba/opg-cli login --app ${manifest.app.slug}
+npx -y @jamba/opg-cli codex install`;
 
     const databaseNamespace = this.namespaceForApp(manifest.app.slug);
     const database = `opg db smoke

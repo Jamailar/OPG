@@ -3,16 +3,20 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { diskStorage, memoryStorage } from 'multer';
 import { extname } from 'path';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { tenantControllerPaths } from '../../common/utils/controller-paths';
+import { DeveloperAuthorizationService } from '../developer-sdk/developer-authorization.service';
+import { DeveloperSdkAuthGuard } from '../developer-sdk/developer-sdk-auth.guard';
 import { UploadService } from './upload.service';
 
 @ApiTags('Upload')
 @Controller(tenantControllerPaths('upload', true))
-@UseGuards(JwtAuthGuard)
+@UseGuards(DeveloperSdkAuthGuard)
 @ApiBearerAuth()
 export class UploadController {
-  constructor(private readonly uploadService: UploadService) {}
+  constructor(
+    private readonly uploadService: UploadService,
+    private readonly developerAuthorizationService: DeveloperAuthorizationService,
+  ) {}
 
   @Post('presigned-url')
   @ApiOperation({ summary: '获取预签名上传URL' })
@@ -32,6 +36,7 @@ export class UploadController {
       appId?: string;
     },
   ) {
+    this.developerAuthorizationService.assertActorScope(req.user, 'upload:write');
     return this.uploadService.getPresignedUrl(
       req.user.id,
       body.filename,
@@ -61,6 +66,7 @@ export class UploadController {
   @ApiOperation({ summary: '上传音频文件' })
   @ApiConsumes('multipart/form-data')
   async uploadAudio(@UploadedFile() file: Express.Multer.File, @Req() req: any, @Param('app') app: string) {
+    this.developerAuthorizationService.assertActorScope(req.user, 'upload:write');
     return this.uploadService.uploadAudio(file, req.user.id, app || req.user.appSlug);
   }
 
@@ -83,6 +89,7 @@ export class UploadController {
   @ApiOperation({ summary: '上传图片文件' })
   @ApiConsumes('multipart/form-data')
   async uploadImage(@UploadedFile() file: Express.Multer.File, @Req() req: any, @Param('app') app: string) {
+    this.developerAuthorizationService.assertActorScope(req.user, 'upload:write');
     return this.uploadService.uploadImage(file, req.user.id, app || req.user.appSlug);
   }
 
@@ -112,6 +119,7 @@ export class UploadController {
     if (!file) {
       throw new BadRequestException('No file uploaded');
     }
+    this.developerAuthorizationService.assertActorScope(req.user, 'upload:write');
     const appSlug = body.app_slug || body.appSlug || app || req.user.appSlug;
     const keyPrefix = body.key_prefix || body.keyPrefix || 'uploads/images';
     const appId = body.app_id || body.appId;
@@ -154,6 +162,7 @@ export class UploadController {
     if (!file) {
       throw new BadRequestException('No file uploaded');
     }
+    this.developerAuthorizationService.assertActorScope(req.user, 'upload:write');
     const appSlug = body.app_slug || body.appSlug || app || req.user.appSlug;
     const keyPrefix = body.key_prefix || body.keyPrefix || 'uploads/files';
     const appId = body.app_id || body.appId;
@@ -187,6 +196,7 @@ export class UploadController {
   @ApiOperation({ summary: '上传通用文件' })
   @ApiConsumes('multipart/form-data')
   async uploadFile(@UploadedFile() file: Express.Multer.File, @Req() req: any, @Param('app') app: string) {
+    this.developerAuthorizationService.assertActorScope(req.user, 'upload:write');
     return this.uploadService.uploadFile(file, req.user.id, app || req.user.appSlug);
   }
 }

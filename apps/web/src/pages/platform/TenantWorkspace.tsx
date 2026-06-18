@@ -44,7 +44,6 @@ import {
   PlatformTenantSiteMessageItem,
   PlatformTenantSiteMessageSummary,
   PlatformTenantSiteSettings,
-  AppApiKeyItem,
   OpgSdkManifest,
   OpgSdkSmokeResult,
   platformApi,
@@ -138,7 +137,7 @@ const WORKSPACE_NAV: Array<{ key: WorkspaceSection; label: string; desc: string 
   { key: 'analytics', label: '经营分析', desc: '用户、订单、账单统计' },
   { key: 'ai-usage', label: 'AI 调用统计', desc: '单 app 调用与消耗趋势' },
   { key: 'api-docs', label: 'API 文档', desc: '按模块查看当前 app 可用接口' },
-  { key: 'developers', label: '开发者接入', desc: 'SDK、Codex 与 API Key' },
+  { key: 'developers', label: '开发者接入', desc: 'SDK、Codex 与授权' },
   { key: 'admins', label: '管理员管理', desc: '账号、密码、权限' },
   { key: 'ai-routing', label: 'AI 模型路由', desc: '基于全局源做租户级覆盖' },
   { key: 'email', label: '邮件', desc: '发件、联系人与批次' },
@@ -558,11 +557,6 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
   const [sdkManifestLoading, setSdkManifestLoading] = useState(false);
   const [sdkSmokeResult, setSdkSmokeResult] = useState<OpgSdkSmokeResult | null>(null);
   const [sdkSmokeLoading, setSdkSmokeLoading] = useState(false);
-  const [developerApiKeys, setDeveloperApiKeys] = useState<AppApiKeyItem[]>([]);
-  const [developerApiKeysLoading, setDeveloperApiKeysLoading] = useState(false);
-  const [newDeveloperApiKey, setNewDeveloperApiKey] = useState('');
-  const [newDeveloperApiKeyName, setNewDeveloperApiKeyName] = useState('Codex SDK Key');
-  const [developerApiKeySaving, setDeveloperApiKeySaving] = useState(false);
   const [wechatOpenApps, setWechatOpenApps] = useState<PlatformWechatOpenAppItem[]>([]);
   const [wechatOpenAppsError, setWechatOpenAppsError] = useState('');
   const [wechatOpenAppRefIdInput, setWechatOpenAppRefIdInput] = useState('');
@@ -926,7 +920,6 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
     const appSlug = resolveDeveloperAppSlug();
     if (!appSlug) return;
     setSdkManifestLoading(true);
-    setDeveloperApiKeysLoading(true);
     try {
       const manifest = await platformApi.getDeveloperSdkManifest(appSlug);
       setSdkManifest(manifest);
@@ -934,15 +927,6 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
       setMessage({ type: 'error', text: pickApiErrorMessage(error, '加载 SDK manifest 失败') });
     } finally {
       setSdkManifestLoading(false);
-    }
-
-    try {
-      const keys = await platformApi.listMyAppApiKeys(appSlug);
-      setDeveloperApiKeys(keys.items || []);
-    } catch {
-      setDeveloperApiKeys([]);
-    } finally {
-      setDeveloperApiKeysLoading(false);
     }
   };
 
@@ -960,42 +944,6 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
       setMessage({ type: 'error', text: pickApiErrorMessage(error, 'SDK 接入检查失败') });
     } finally {
       setSdkSmokeLoading(false);
-    }
-  };
-
-  const createDeveloperApiKey = async () => {
-    const appSlug = resolveDeveloperAppSlug();
-    if (!appSlug) return;
-    setDeveloperApiKeySaving(true);
-    setMessage(null);
-    try {
-      const result = await platformApi.createMyAppApiKey(appSlug, newDeveloperApiKeyName.trim() || 'Codex SDK Key');
-      setNewDeveloperApiKey(result.key || '');
-      setMessage({ type: 'success', text: result.key ? 'API Key 已创建' : 'API Key 已存在' });
-      const keys = await platformApi.listMyAppApiKeys(appSlug);
-      setDeveloperApiKeys(keys.items || []);
-    } catch (error: any) {
-      setMessage({ type: 'error', text: pickApiErrorMessage(error, '创建 API Key 失败') });
-    } finally {
-      setDeveloperApiKeySaving(false);
-    }
-  };
-
-  const revokeDeveloperApiKey = async (keyId: string) => {
-    const appSlug = resolveDeveloperAppSlug();
-    if (!appSlug || !keyId) return;
-    if (!window.confirm('确认撤销这个 API Key 吗？')) return;
-    setDeveloperApiKeySaving(true);
-    setMessage(null);
-    try {
-      await platformApi.revokeMyAppApiKey(appSlug, keyId);
-      const keys = await platformApi.listMyAppApiKeys(appSlug);
-      setDeveloperApiKeys(keys.items || []);
-      setMessage({ type: 'success', text: 'API Key 已撤销' });
-    } catch (error: any) {
-      setMessage({ type: 'error', text: pickApiErrorMessage(error, '撤销 API Key 失败') });
-    } finally {
-      setDeveloperApiKeySaving(false);
     }
   };
 
@@ -3164,7 +3112,13 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
   const renderDevelopers = () => {
     const appSlug = resolveDeveloperAppSlug();
     const apiBaseUrl = sdkManifest?.app?.api_base_url || (runtimeContext.apiBaseUrl ? `${runtimeContext.apiBaseUrl.replace(/\/+$/, '')}/${appSlug}/v1` : '');
-    const installCommand = sdkManifest?.codex?.install_command || `npx -y opg-dev-cli codex install --base-url ${runtimeContext.apiBaseUrl} --app ${appSlug}`;
+    const installCommand = sdkManifest?.codex?.install_command || [
+      `npx -y @jamba/opg-cli init --base-url ${runtimeContext.apiBaseUrl}`,
+      'npx -y @jamba/opg-cli login',
+      `npx -y @jamba/opg-cli app use ${appSlug}`,
+      `npx -y @jamba/opg-cli login --app ${appSlug}`,
+      'npx -y @jamba/opg-cli codex install',
+    ].join('\n');
     const databaseSlug = appSlug.toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '').replace(/_+/g, '_');
     const databaseNamespace = `app_${databaseSlug && /^[a-z_]/.test(databaseSlug) ? databaseSlug : `app_${databaseSlug || 'default'}`}__`;
     const databaseCommands = [
@@ -3175,7 +3129,7 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
     const envText = [
       `OPG_BASE_URL=${runtimeContext.apiBaseUrl || ''}`,
       `OPG_APP_SLUG=${appSlug}`,
-      'OPG_API_KEY=rbx_replace_me',
+      `# npx -y @jamba/opg-cli login --app ${appSlug}`,
     ].join('\n');
 
     return (
@@ -3214,13 +3168,9 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
               复制 SDK 安装
             </button>
           </div>
-          <pre className="platform-code-block">{`import { createOpgClient } from 'opg-sdk';
+          <pre className="platform-code-block">{`import { createOpgClientFromLocalConfig } from 'opg-sdk';
 
-const opg = createOpgClient({
-  baseUrl: process.env.OPG_BASE_URL!,
-  app: process.env.OPG_APP_SLUG!,
-  apiKey: process.env.OPG_API_KEY!,
-});
+const opg = await createOpgClientFromLocalConfig();
 
 const agents = await opg.agents.list();`}</pre>
         </section>
@@ -3237,8 +3187,8 @@ const agents = await opg.agents.list();`}</pre>
             <table className="table">
               <tbody>
                 <tr><td>MCP command</td><td>{sdkManifest?.codex?.mcp_server_command || 'npx'}</td></tr>
-                <tr><td>MCP args</td><td>{(sdkManifest?.codex?.mcp_server_args || ['-y', 'opg-dev-cli', 'mcp']).join(' ')}</td></tr>
-                <tr><td>环境变量</td><td>{(sdkManifest?.codex?.environment || ['OPG_BASE_URL', 'OPG_APP_SLUG', 'OPG_API_KEY']).join(', ')}</td></tr>
+                <tr><td>MCP args</td><td>{(sdkManifest?.codex?.mcp_server_args || ['-y', '@jamba/opg-cli', 'mcp']).join(' ')}</td></tr>
+                <tr><td>环境变量</td><td>{(sdkManifest?.codex?.environment || ['OPG_BASE_URL', 'OPG_APP_SLUG']).join(', ')}</td></tr>
               </tbody>
             </table>
           </div>
@@ -3256,52 +3206,17 @@ const agents = await opg.agents.list();`}</pre>
 
         <section className="card">
           <div className="platform-section-head">
-            <h3>API Keys</h3>
-            <button className="btn btn-sm" type="button" onClick={() => void createDeveloperApiKey()} disabled={developerApiKeySaving}>
-              {developerApiKeySaving ? '创建中...' : '创建'}
-            </button>
+            <h3>授权管理</h3>
+            <Link className="btn btn-sm" to="/platform-admin/developer-authorizations">
+              打开
+            </Link>
           </div>
-          <div className="platform-form-grid compact">
-            <label>
-              名称
-              <input value={newDeveloperApiKeyName} onChange={(event) => setNewDeveloperApiKeyName(event.target.value)} />
-            </label>
-            {newDeveloperApiKey ? (
-              <label className="platform-form-span-2">
-                新 Key
-                <input readOnly value={newDeveloperApiKey} onFocus={(event) => event.currentTarget.select()} />
-              </label>
-            ) : null}
-          </div>
-          {newDeveloperApiKey ? (
-            <div className="platform-form-actions">
-              <button className="btn btn-secondary btn-sm" type="button" onClick={() => void copyDeveloperText(newDeveloperApiKey, 'API Key')}>
-                复制新 Key
-              </button>
-            </div>
-          ) : null}
           <div className="platform-api-table-wrap">
             <table className="table">
-              <thead><tr><th>名称</th><th>Key</th><th>状态</th><th>最近使用</th><th>操作</th></tr></thead>
               <tbody>
-                {developerApiKeys.map((item) => (
-                  <tr key={item.id}>
-                    <td>{item.name}</td>
-                    <td>{item.key_prefix}...{item.key_last4}</td>
-                    <td><span className={`status-tag ${item.is_active ? 'success' : 'muted'}`}>{item.is_active ? '启用' : '停用'}</span></td>
-                    <td>{formatDateTime(item.last_used_at)}</td>
-                    <td>
-                      {item.is_active ? (
-                        <button className="btn btn-danger btn-sm" type="button" onClick={() => void revokeDeveloperApiKey(item.id)} disabled={developerApiKeySaving}>
-                          撤销
-                        </button>
-                      ) : '-'}
-                    </td>
-                  </tr>
-                ))}
-                {!developerApiKeys.length && (
-                  <tr><td colSpan={5}>{developerApiKeysLoading ? '加载中...' : '暂无 API Key'}</td></tr>
-                )}
+                <tr><td>凭证类型</td><td>平台 Developer Grant</td></tr>
+                <tr><td>Key 前缀</td><td>opg_dev_</td></tr>
+                <tr><td>权限范围</td><td>按 app 与 scope 管理</td></tr>
               </tbody>
             </table>
           </div>

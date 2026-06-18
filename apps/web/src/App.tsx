@@ -5,6 +5,7 @@ import { bootstrapApi } from '@/lib/api';
 import { useCurrentUser } from '@/lib/hooks/use-api';
 import Login from '@/pages/auth/Login';
 import AppLogin from '@/pages/auth/AppLogin';
+import SdkLogin from '@/pages/auth/SdkLogin';
 import FirstRunSetup from '@/pages/setup/FirstRunSetup';
 import PlatformDashboard from '@/pages/platform/PlatformDashboard';
 import AppTenants from '@/pages/platform/AppTenants';
@@ -23,6 +24,7 @@ import PlatformEmailServicePage from '@/pages/platform/PlatformEmailServicePage'
 import PlatformStorageSettingsPage from '@/pages/platform/PlatformStorageSettingsPage';
 import PlatformRuntimeSettingsPage from '@/pages/platform/PlatformRuntimeSettingsPage';
 import PlatformObservabilityPage from '@/pages/platform/PlatformObservabilityPage';
+import DeveloperAuthorizationsPage from '@/pages/platform/DeveloperAuthorizationsPage';
 import PlatformJobsPage from '@/pages/platform/PlatformJobsPage';
 import PlatformLayout from '@/components/PlatformLayout';
 import { applyRuntimeContext, runtimeContext } from '@/lib/runtime-context';
@@ -136,6 +138,7 @@ function App() {
       <FirstRunGate>
         <Routes>
           <Route path="/setup" element={<FirstRunSetup />} />
+          <Route path="/sdk-login" element={<SdkLogin />} />
           <Route path="/auth/login" element={<Login />} />
           <Route path="/:appSlug" element={<AppLogin />} />
           <Route path="/:appSlug/admin/*" element={<BusinessProtectedRoute />} />
@@ -266,6 +269,15 @@ function App() {
             element={
               <PlatformProtectedRoute>
                 <PlatformRuntimeSettingsPage />
+              </PlatformProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/platform-admin/developer-authorizations"
+            element={
+              <PlatformProtectedRoute>
+                <DeveloperAuthorizationsPage />
               </PlatformProtectedRoute>
             }
           />

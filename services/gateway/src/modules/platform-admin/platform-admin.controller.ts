@@ -11,6 +11,7 @@ import { PlatformAdminAiDebugJwtAuthGuard } from './guards/platform-admin-ai-deb
 import { RuntimeSettingsService } from '../runtime-settings/runtime-settings.service';
 import { AiGatewayObservabilityService } from '../ai-chat/ai-gateway-observability.service';
 import { PlatformObservabilityService } from '../observability/platform-observability.service';
+import { DeveloperAuthorizationService } from '../developer-sdk/developer-authorization.service';
 import { PlatformTasksService } from '../platform-tasks/platform-tasks.service';
 import { PlatformTaskStatus } from '../platform-tasks/platform-tasks.types';
 
@@ -27,6 +28,7 @@ export class PlatformAdminController {
     private readonly runtimeSettingsService: RuntimeSettingsService,
     private readonly aiGatewayObservabilityService: AiGatewayObservabilityService,
     private readonly platformObservabilityService: PlatformObservabilityService,
+    private readonly developerAuthorizationService: DeveloperAuthorizationService,
     private readonly platformTasksService: PlatformTasksService,
   ) {}
 
@@ -111,7 +113,6 @@ export class PlatformAdminController {
       page_size: pageSize,
     });
   }
-
 
   @Get('tasks/runtime')
   @ApiOperation({ summary: '平台任务运行摘要' })
@@ -237,6 +238,30 @@ export class PlatformAdminController {
   @ApiOperation({ summary: '撤销平台集成 API Key' })
   async revokePlatformApiKey(@Param('api_key_id') apiKeyId: string) {
     return this.runtimeSettingsService.revokePlatformApiKey(apiKeyId);
+  }
+
+  @Get('developer-authorizations/scopes')
+  @ApiOperation({ summary: '开发者授权 scope 目录' })
+  async listDeveloperAuthorizationScopes() {
+    return this.developerAuthorizationService.scopeCatalog();
+  }
+
+  @Get('developer-authorizations/grants')
+  @ApiOperation({ summary: '开发者授权列表' })
+  async listDeveloperAuthorizationGrants() {
+    return this.developerAuthorizationService.listGrants();
+  }
+
+  @Patch('developer-authorizations/grants/:grant_id')
+  @ApiOperation({ summary: '更新开发者授权范围' })
+  async updateDeveloperAuthorizationGrant(@Param('grant_id') grantId: string, @Body() body: any) {
+    return this.developerAuthorizationService.updateGrant(grantId, body || {});
+  }
+
+  @Post('developer-authorizations/grants/:grant_id/revoke')
+  @ApiOperation({ summary: '撤销开发者授权' })
+  async revokeDeveloperAuthorizationGrant(@Param('grant_id') grantId: string) {
+    return this.developerAuthorizationService.revokeGrant(grantId);
   }
 
   @Get('smtp/providers')

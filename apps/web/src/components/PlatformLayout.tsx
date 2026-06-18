@@ -21,6 +21,7 @@ type PlatformNavIconKey =
   | 'email'
   | 'storage'
   | 'settings'
+  | 'developer'
   | 'api'
   | 'ai'
   | 'playground'
@@ -100,6 +101,13 @@ const navItems = [
     path: '/platform-admin/settings',
   },
   {
+    key: 'developer-authorizations',
+    icon: 'developer',
+    label: '开发者授权',
+    desc: 'SDK、Codex 与 scope',
+    path: '/platform-admin/developer-authorizations',
+  },
+  {
     key: 'apis',
     icon: 'api',
     label: '共享 API 列表',
@@ -125,6 +133,7 @@ const platformNavIconPaths: Record<PlatformNavIconKey, string[]> = {
   email: ['M4 7.5 12 13l8-5.5', 'M6 18h12A2 2 0 0 0 20 16V8A2 2 0 0 0 18 6H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2Z'],
   storage: ['M5 7c0-1.7 3.1-3 7-3s7 1.3 7 3-3.1 3-7 3-7-1.3-7-3Z', 'M5 7v5c0 1.7 3.1 3 7 3s7-1.3 7-3V7', 'M5 12v5c0 1.7 3.1 3 7 3s7-1.3 7-3v-5'],
   settings: ['M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z', 'M19.4 15a1.7 1.7 0 0 0 .34 1.88l.04.05a2 2 0 0 1-2.83 2.83l-.05-.04A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.55V21a2 2 0 0 1-4 0v-.05A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.88.34l-.05.04a2 2 0 0 1-2.83-2.83l.04-.05A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 0 1 0-4h.05A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88l-.04-.05a2 2 0 0 1 2.83-2.83l.05.04A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 0 1 4 0v.05A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.88-.34l.05-.04a2 2 0 0 1 2.83 2.83l-.04.05A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 0 1 0 4h-.05A1.7 1.7 0 0 0 19.4 15Z'],
+  developer: ['M12 4v4', 'M8 8h8l2 4-6 8-6-8 2-4Z', 'M9 12h6'],
   api: ['M8 7 4 12l4 5', 'M16 7l4 5-4 5', 'M14 4l-4 16'],
   ai: ['M13 3 5 14h6l-1 7 9-12h-6l0-6Z'],
   playground: ['M12 3l1.9 5.9H20l-5 3.6 1.9 5.9-5-3.6-5 3.6L8.8 12.5l-5-3.6h6.2L12 3Z'],

@@ -3,32 +3,39 @@
 TypeScript SDK for OPG backend services.
 
 ```ts
-import { createOpgClient } from "opg-sdk";
+import { createOpgClientFromLocalConfig } from "opg-sdk";
 
-const opg = createOpgClient({
-  baseUrl: process.env.OPG_BASE_URL!,
-  app: process.env.OPG_APP_SLUG!,
-  apiKey: process.env.OPG_API_KEY!,
-});
+const opg = await createOpgClientFromLocalConfig();
 
 const models = await opg.ai.models();
 ```
+
+## Local Login
+
+```bash
+npx -y @jamba/opg-cli init --base-url https://api.example.com
+npx -y @jamba/opg-cli login
+npx -y @jamba/opg-cli app create --name "Your App" --slug your-app
+npx -y @jamba/opg-cli login --app your-app
+```
+
+`createOpgClientFromLocalConfig()` reads `.opg/credentials.json`, `.opg/opg.config.json`, `.env.local`, and environment variables.
 
 ## Configuration
 
 - `OPG_BASE_URL`: Gateway base URL, for example `https://api.example.com`
 - `OPG_APP_SLUG`: App slug owned by the current tenant
-- `OPG_API_KEY`: App API key created in the OPG developer console
+- `OPG_API_KEY`: Optional explicit Developer Grant (`opg_dev_...`) for CI or non-interactive server runtimes
 - `OPG_PLATFORM_TOKEN`: Platform admin JWT for global control-plane operations
 
 ## Codex
 
-Use `opg-dev-cli` to generate local config and install the Codex MCP bridge.
+Use `@jamba/opg-cli` to generate local config and install the Codex MCP bridge.
 
 ## Global Platform Control Plane
 
-App API keys are intentionally app-scoped. To create apps or manage global
-providers, pass a platform admin token and use the platform client:
+Developer Grants are intentionally scoped by app and permission. To create apps
+or manage global providers, pass a platform admin token and use the platform client:
 
 ```ts
 import { createOpgPlatformClient } from "opg-sdk";

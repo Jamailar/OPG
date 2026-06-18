@@ -327,6 +327,32 @@ export interface AppApiKeyCreateResult {
   message?: string;
 }
 
+export interface DeveloperAuthorizationScope {
+  key: string;
+  label: string;
+  group: string;
+  risk: 'low' | 'medium' | 'high';
+}
+
+export interface DeveloperAuthorizationGrant {
+  id: string;
+  name: string;
+  key_prefix: string;
+  key_last4: string;
+  user_id?: string | null;
+  user_email?: string | null;
+  scopes: string[];
+  allowed_app_ids: string[];
+  allowed_apps: Array<{ id: string; slug: string; name: string }>;
+  status: string;
+  last_used_at?: string | null;
+  expires_at?: string | null;
+  revoked_at?: string | null;
+  created_by_email?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface BootstrapStatus {
   needs_setup: boolean;
   platform_app_slug: string;
@@ -3121,6 +3147,29 @@ export const platformApi = {
 
   revokeIntegrationApiKey: async (apiKeyId: string): Promise<PlatformIntegrationApiKeyItem> => {
     const response = await apiClient.getClient().post(`/platform-admin/integration-api-keys/${apiKeyId}/revoke`);
+    return response.data?.data || response.data;
+  },
+
+  listDeveloperAuthorizationScopes: async (): Promise<{ items: DeveloperAuthorizationScope[]; default_scopes: string[] }> => {
+    const response = await apiClient.getClient().get('/platform-admin/developer-authorizations/scopes');
+    return response.data?.data || response.data;
+  },
+
+  listDeveloperAuthorizationGrants: async (): Promise<{ items: DeveloperAuthorizationGrant[]; scope_catalog: DeveloperAuthorizationScope[] }> => {
+    const response = await apiClient.getClient().get('/platform-admin/developer-authorizations/grants');
+    return response.data?.data || response.data;
+  },
+
+  updateDeveloperAuthorizationGrant: async (
+    grantId: string,
+    payload: { name?: string; scopes?: string[]; allowed_app_ids?: string[]; expires_at?: string | null },
+  ): Promise<DeveloperAuthorizationGrant> => {
+    const response = await apiClient.getClient().patch(`/platform-admin/developer-authorizations/grants/${grantId}`, payload);
+    return response.data?.data || response.data;
+  },
+
+  revokeDeveloperAuthorizationGrant: async (grantId: string): Promise<DeveloperAuthorizationGrant> => {
+    const response = await apiClient.getClient().post(`/platform-admin/developer-authorizations/grants/${grantId}/revoke`);
     return response.data?.data || response.data;
   },
 

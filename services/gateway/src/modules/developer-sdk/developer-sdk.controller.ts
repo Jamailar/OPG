@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { resolveAppSlug, tenantControllerPaths } from '../../common/utils/controller-paths';
 import { DeveloperDatabaseService } from './developer-database.service';
 import { DeveloperSdkAuthGuard } from './developer-sdk-auth.guard';
+import { DeveloperSdkLoginService } from './developer-sdk-login.service';
 import { DeveloperSdkService } from './developer-sdk.service';
 
 @ApiTags('DeveloperSDK')
@@ -11,6 +12,7 @@ export class DeveloperSdkController {
   constructor(
     private readonly developerSdkService: DeveloperSdkService,
     private readonly developerDatabaseService: DeveloperDatabaseService,
+    private readonly developerSdkLoginService: DeveloperSdkLoginService,
   ) {}
 
   @Get('manifest')
@@ -47,7 +49,7 @@ export class DeveloperSdkController {
     const manifest = await this.developerSdkService.getManifest(resolveAppSlug(req), this.getRequestOptions(req));
     return {
       profile: String(body?.profile || 'default').trim() || 'default',
-      client: String(body?.client || 'opg-dev-cli').trim() || 'opg-dev-cli',
+      client: String(body?.client || '@jamba/opg-cli').trim() || '@jamba/opg-cli',
       app: manifest.app,
       env: {
         OPG_BASE_URL: this.getRequestOptions(req).baseUrl,
@@ -55,6 +57,35 @@ export class DeveloperSdkController {
       },
       codex: manifest.codex,
     };
+  }
+
+  @Post('auth/sessions')
+  @ApiOperation({ summary: 'Create a browser-based SDK login session for local CLI clients' })
+  async createLoginSession(
+    @Req() req: any,
+    @Body() body: { callback_url?: string; callbackUrl?: string; client?: string; profile?: string; web_url?: string; webUrl?: string },
+  ) {
+    return this.developerSdkLoginService.createSession(resolveAppSlug(req), body || {}, this.getRequestOptions(req));
+  }
+
+  @Get('auth/sessions/:state')
+  @ApiOperation({ summary: 'Read a browser-based SDK login session' })
+  async getLoginSession(@Req() req: any, @Param('state') state: string) {
+    return this.developerSdkLoginService.getSession(resolveAppSlug(req), state);
+  }
+
+  @Post('auth/sessions/:state/authorize')
+  @UseGuards(DeveloperSdkAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Authorize an SDK login session with the current app admin' })
+  async authorizeLoginSession(@Req() req: any, @Param('state') state: string, @Body() body: { scopes?: unknown }) {
+    return this.developerSdkLoginService.authorizeSession(resolveAppSlug(req), state, req.user, body || {});
+  }
+
+  @Post('auth/token')
+  @ApiOperation({ summary: 'Exchange a browser authorization code for a local SDK API key' })
+  async exchangeLoginToken(@Req() req: any, @Body() body: { state?: string; code?: string }) {
+    return this.developerSdkLoginService.exchangeToken(resolveAppSlug(req), body || {});
   }
 
   @Get('database/manifest')

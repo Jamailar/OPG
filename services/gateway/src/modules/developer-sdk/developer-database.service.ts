@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { PRISMA_CLIENT } from '../../config/database.module';
+import { DeveloperAuthorizationService } from './developer-authorization.service';
 
 type AppRow = {
   id: string;
@@ -17,6 +18,8 @@ type RequestActor = {
   appSlug?: string | null;
   authMode?: string | null;
   apiKeyId?: string | null;
+  developerGrantId?: string | null;
+  developerScopes?: string[] | null;
 };
 
 type DatabaseRequestContext = {
@@ -50,7 +53,10 @@ export class DeveloperDatabaseService implements OnModuleInit {
   private schemaReady = false;
   private schemaPromise: Promise<void> | null = null;
 
-  constructor(@Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient) {}
+  constructor(
+    @Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient,
+    private readonly developerAuthorizationService: DeveloperAuthorizationService,
+  ) {}
 
   async onModuleInit() {
     try {
@@ -61,6 +67,7 @@ export class DeveloperDatabaseService implements OnModuleInit {
   }
 
   async getManifest(context: DatabaseRequestContext) {
+    this.developerAuthorizationService.assertActorScope(context.actor, 'database:schema:read');
     const { app } = await this.assertDatabaseAccess(context);
     const namespace = this.namespaceForApp(app.slug);
     return {
@@ -94,6 +101,7 @@ export class DeveloperDatabaseService implements OnModuleInit {
   }
 
   async listTables(context: DatabaseRequestContext) {
+    this.developerAuthorizationService.assertActorScope(context.actor, 'database:schema:read');
     const { app } = await this.assertDatabaseAccess(context);
     const namespace = this.namespaceForApp(app.slug);
     const rows = await (this.prisma.$queryRawUnsafe(
@@ -116,6 +124,7 @@ export class DeveloperDatabaseService implements OnModuleInit {
   }
 
   async describeTable(context: DatabaseRequestContext, tableName: string) {
+    this.developerAuthorizationService.assertActorScope(context.actor, 'database:schema:read');
     const { app } = await this.assertDatabaseAccess(context);
     const namespace = this.namespaceForApp(app.slug);
     const normalizedTable = this.normalizeTableName(tableName);
@@ -157,6 +166,7 @@ export class DeveloperDatabaseService implements OnModuleInit {
   }
 
   async query(context: DatabaseRequestContext, payload: DatabaseQueryPayload) {
+    this.developerAuthorizationService.assertActorScope(context.actor, 'database:data:read');
     const { app } = await this.assertDatabaseAccess(context);
     const namespace = this.namespaceForApp(app.slug);
     const statement = this.singleStatement(payload?.sql);
@@ -208,6 +218,7 @@ export class DeveloperDatabaseService implements OnModuleInit {
     for (const statement of statements) {
       this.assertWriteStatement(statement, namespace);
     }
+    this.assertExecuteScopes(context, statements);
 
     const dryRun = payload?.dry_run !== undefined ? payload.dry_run !== false : payload?.dryRun !== false;
     if (!dryRun && payload?.confirm !== `apply:${app.slug}`) {
@@ -269,6 +280,9 @@ export class DeveloperDatabaseService implements OnModuleInit {
     if (context.actor?.appSlug && context.actor.appSlug !== app.slug) {
       throw new ForbiddenException('Actor does not belong to this app');
     }
+    if (context.actor?.authMode === 'developer_grant') {
+      return { app, actorUserId };
+    }
 
     const rows = await (this.prisma.$queryRawUnsafe(
       `
@@ -292,6 +306,23 @@ export class DeveloperDatabaseService implements OnModuleInit {
       throw new ForbiddenException('Database access requires an app admin');
     }
     return { app, actorUserId };
+  }
+
+  private assertExecuteScopes(context: DatabaseRequestContext, statements: string[]) {
+    if (context.actor?.authMode !== 'developer_grant') {
+      return;
+    }
+    const needsSchemaWrite = statements.some((statement) => /^(create|alter|drop|truncate)\b/i.test(statement.trim()));
+    const needsDataWrite = statements.some((statement) => /^(insert|update|delete|merge)\b/i.test(statement.trim()));
+    if (needsSchemaWrite) {
+      this.developerAuthorizationService.assertActorScope(context.actor, 'database:schema:write');
+    }
+    if (needsDataWrite) {
+      this.developerAuthorizationService.assertActorScope(context.actor, 'database:data:write');
+    }
+    if (!needsSchemaWrite && !needsDataWrite) {
+      this.developerAuthorizationService.assertActorScope(context.actor, 'database:schema:write');
+    }
   }
 
   private async resolveApp(appSlug?: string) {

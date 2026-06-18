@@ -1268,6 +1268,10 @@ code {
   background: var(--bg-secondary);
 }
 
+.selected-row {
+  background: var(--bg-secondary);
+}
+
 /* ── Detail panel ── */
 
 .platform-detail {

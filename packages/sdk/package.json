@@ -1,6 +1,6 @@
 {
   "name": "opg-sdk",
-  "version": "0.2.2",
+  "version": "0.2.4",
   "description": "OPG Developer SDK for AI apps, agents, uploads, async video tasks, and usage inspection.",
   "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
@@ -28,6 +28,7 @@
     "node": ">=22"
   },
   "devDependencies": {
+    "@types/node": "^20.11.0",
     "typescript": "^5.3.0"
   }
 }
