@@ -81,7 +81,7 @@ export default function FirstRunSetup() {
         password,
         display_name: displayName || undefined,
       });
-      await authService.login(email, password);
+      await authService.loginPlatform(email, password);
       setMessage({ type: 'success', text: '初始化完成' });
       navigate('/platform-admin/apps', { replace: true });
     } catch (error: any) {

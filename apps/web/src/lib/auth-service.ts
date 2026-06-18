@@ -23,6 +23,17 @@ class AuthService {
     return runtimeContext.apiV1BaseUrl;
   }
 
+  private resolvePlatformLoginBaseUrl(): string {
+    const apiBase = String(runtimeContext.apiBaseUrl || '').trim().replace(/\/+$/, '');
+    if (apiBase) {
+      return `${apiBase}/api/v1`;
+    }
+    if (typeof window !== 'undefined') {
+      return `${window.location.origin.replace(/\/+$/, '')}/api/v1`;
+    }
+    return runtimeContext.apiV1BaseUrl;
+  }
+
   private async parseResponse(response: Response): Promise<any> {
     const contentType = (response.headers.get('content-type') || '').toLowerCase();
     if (contentType.includes('application/json')) {
@@ -47,8 +58,18 @@ class AuthService {
    * 登录
    */
   async login(email: string, password: string) {
+    return this.loginWithBaseUrl(this.resolveLoginBaseUrl(), email, password);
+  }
+
+  /**
+   * 平台登录。用于首次初始化、全局控制台和不应受 app slug 影响的授权流程。
+   */
+  async loginPlatform(email: string, password: string) {
+    return this.loginWithBaseUrl(this.resolvePlatformLoginBaseUrl(), email, password);
+  }
+
+  private async loginWithBaseUrl(loginBaseUrl: string, email: string, password: string) {
     try {
-      const loginBaseUrl = this.resolveLoginBaseUrl();
       if (!loginBaseUrl) {
         throw new Error('未配置 API 地址。请在部署环境设置 VITE_API_BASE_URL 指向 gateway-api 域名。');
       }
