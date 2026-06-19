@@ -565,7 +565,7 @@ export class AppSchemaService {
     const { app, table, columns, policies, policyActor } = await this.resolveDataRequest(appRef, tableRef, actor, 'read');
     const readPolicy = this.policyEngineService.compileReadPolicy({ table, columns, policies, actor: policyActor, paramOffset: 1 });
     const selectedColumns = this.resolveSelectedColumns(readPolicy.visibleColumns, query?.select);
-    const whereParts = [`${this.q(table.primary_key)} = $1`];
+    const whereParts = [this.primaryKeyPredicate(table, columns, 1)];
     if (table.soft_delete_column && columns.some((column) => column.slug === table.soft_delete_column)) {
       whereParts.push(`${this.q(table.soft_delete_column)} IS NULL`);
     }
@@ -640,7 +640,7 @@ export class AppSchemaService {
     const values = Object.values(payload);
     const returning = this.visibleColumns(columns);
     const params = [...values, id];
-    const whereParts = [`${this.q(table.primary_key)} = $${params.length}`];
+    const whereParts = [this.primaryKeyPredicate(table, columns, params.length)];
     if (table.soft_delete_column && columns.some((column) => column.slug === table.soft_delete_column)) {
       whereParts.push(`${this.q(table.soft_delete_column)} IS NULL`);
     }
@@ -688,14 +688,14 @@ export class AppSchemaService {
         ? `
             UPDATE ${this.q(table.physical_table_name)}
                SET ${this.q(table.soft_delete_column!)} = now()
-             WHERE ${this.q(table.primary_key)} = $1
+             WHERE ${this.primaryKeyPredicate(table, columns, 1)}
                AND ${this.q(table.soft_delete_column!)} IS NULL
                ${policyWhere}
             RETURNING ${returning.map((column) => this.q(column.physical_column_name)).join(', ')}
           `
         : `
             DELETE FROM ${this.q(table.physical_table_name)}
-             WHERE ${this.q(table.primary_key)} = $1
+             WHERE ${this.primaryKeyPredicate(table, columns, 1)}
                ${policyWhere}
             RETURNING ${returning.map((column) => this.q(column.physical_column_name)).join(', ')}
           `,
@@ -989,9 +989,21 @@ export class AppSchemaService {
         throw new BadRequestException(`Unknown filter field: ${field}`);
       }
       params.push(value);
-      sql.push(`${this.q(column.physical_column_name)} = $${params.length}`);
+      sql.push(`${this.q(column.physical_column_name)} = ${this.sqlParam(column, params.length)}`);
     }
     return { sql, params };
+  }
+
+  private primaryKeyPredicate(table: AppDataTableRow, columns: AppDataColumnRow[], paramIndex: number) {
+    const column = columns.find((item) => item.slug === table.primary_key)
+      || columns.find((item) => item.physical_column_name === table.primary_key);
+    const physicalColumn = column?.physical_column_name || table.primary_key;
+    return `${this.q(physicalColumn)} = ${this.sqlParam(column, paramIndex)}`;
+  }
+
+  private sqlParam(column: AppDataColumnRow | undefined, paramIndex: number) {
+    const sqlType = String(column?.data_type || '').trim().toLowerCase();
+    return `$${paramIndex}${sqlType === 'uuid' ? '::uuid' : ''}`;
   }
 
   private pickWritablePayload(columns: AppDataColumnRow[], body: Record<string, unknown>) {
