@@ -209,6 +209,7 @@ export type OpgPlatformClient = {
       manifest(appId: string): Promise<Record<string, unknown>>;
       createTable(appId: string, input: OpgSchemaTableInput): Promise<Record<string, unknown>>;
       addColumn(appId: string, table: string, input: OpgSchemaColumnInput): Promise<Record<string, unknown>>;
+      dropTable(appId: string, table: string, input?: Record<string, unknown>): Promise<Record<string, unknown>>;
     };
     functions: {
       list(appId: string): Promise<Record<string, unknown>>;
@@ -688,6 +689,8 @@ export function createOpgPlatformClient(options: OpgClientOptions): OpgPlatformC
         createTable: (appId, input) => request(appPath(appId, '/schema/tables'), { method: 'POST', body: input }),
         addColumn: (appId, table, input) =>
           request(appPath(appId, `/schema/tables/${encodeURIComponent(table)}/columns`), { method: 'POST', body: input }),
+        dropTable: (appId, table, input = {}) =>
+          request(appPath(appId, `/schema/tables/${encodeURIComponent(table)}`), { method: 'DELETE', body: input }),
       },
       functions: {
         list: (appId) => request(appPath(appId, '/functions')),

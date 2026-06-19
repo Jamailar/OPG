@@ -40,6 +40,29 @@ opg login --app demo
 
 app 级授权会生成 Developer Grant，用于 `opg manifest`、`opg smoke`、`opg db ...` 和 MCP 的 app-scoped 工具。
 
+## App 构建面
+
+```bash
+opg schema table create --name customers --columns email:text,name:text --apply
+opg data create customers --json '{"email":"a@example.com","name":"Alice"}'
+opg function create --app-id demo --slug sync_customer --source '{"kind":"echo"}'
+opg function deploy --app-id demo sync_customer
+opg function invoke sync_customer --json '{"input":{"email":"a@example.com"}}'
+opg workflow create --app-id demo --slug onboard --steps '[{"id":"noop","type":"noop"}]'
+opg workflow run onboard --json '{"input":{"email":"a@example.com"}}'
+opg block ai upsert --app-id demo --json '{"slug":"copy","prompt_template":"Write {{topic}}"}'
+```
+
+端到端校验脚本：
+
+```bash
+OPG_BASE_URL=https://opg.example.com \
+OPG_APP_SLUG=demo \
+OPG_API_KEY=opg_dev_xxx \
+OPG_PLATFORM_TOKEN=eyJ... \
+node scripts/verify-app-construction-plane.mjs
+```
+
 ## 常用流程
 
 ```bash

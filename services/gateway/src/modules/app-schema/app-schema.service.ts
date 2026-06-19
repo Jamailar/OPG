@@ -382,6 +382,47 @@ export class AppSchemaService {
     };
   }
 
+  async dropTable(appRef: string, tableRef: string, actor: any, input: Record<string, unknown> = {}) {
+    const app = await this.resolveApp(appRef);
+    const table = await this.resolveTable(app.id, tableRef);
+    const dryRun = input?.dry_run !== undefined ? input.dry_run !== false : input?.dryRun !== false;
+    const confirm = String(input?.confirm || '').trim();
+    const sql = `DROP TABLE IF EXISTS ${this.q(table.physical_table_name)};`;
+    if (dryRun) {
+      return {
+        ok: true,
+        dry_run: true,
+        applied: false,
+        app: this.serializeApp(app),
+        table: this.serializeTableRef(table),
+        sql,
+        next: { apply_with: { dry_run: false, confirm: `drop:${table.slug}` } },
+      };
+    }
+    if (confirm !== `drop:${table.slug}`) {
+      throw new BadRequestException(`confirm must be drop:${table.slug}`);
+    }
+    const actorUserId = this.actorUserId(actor);
+    const apiKeyId = this.optionalUuid(actor?.apiKeyId);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, app.id);
+      await tx.$executeRawUnsafe(sql);
+      await tx.$executeRawUnsafe(`UPDATE app_data_tables SET status = 'DELETED', updated_by_user_id = $1::uuid, updated_at = now() WHERE id = $2::uuid`, actorUserId, table.id);
+      await this.recordSchemaEventTx(tx, app.id, actorUserId, apiKeyId, 'table', table.id, 'schema.table.deleted', {
+        slug: table.slug,
+        physical_table_name: table.physical_table_name,
+      }, null, this.sha256(sql));
+    });
+    return {
+      ok: true,
+      dry_run: false,
+      applied: true,
+      app: this.serializeApp(app),
+      table: this.serializeTableRef(table),
+      sql,
+    };
+  }
+
   async upsertPolicy(appRef: string, tableRef: string, actor: any, input: UpsertAppDataPolicyInput) {
     const app = await this.resolveApp(appRef);
     const table = await this.resolveTable(app.id, tableRef);

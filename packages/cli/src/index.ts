@@ -370,6 +370,18 @@ async function runSchemaCommand(commandArgs: string[]) {
     printJson(await client.apps.schema.createTable(appId, payload));
     return;
   }
+  if ((resource === 'table' || resource === 'tables') && (action === 'drop' || action === 'delete')) {
+    const positionals = positionalArgs(commandArgs.slice(2));
+    const table = flags.table || positionals[0] || '';
+    if (!table) {
+      throw new Error('Missing table. Use: opg schema table drop <table> --confirm drop:<table>');
+    }
+    printJson(await client.apps.schema.dropTable(appId, table, {
+      dry_run: flags.apply ? false : flags['dry-run'] === undefined ? true : parseBooleanFlag(flags['dry-run']),
+      confirm: flags.confirm,
+    }));
+    return;
+  }
   if ((resource === 'column' || resource === 'columns') && (action === 'add' || action === 'create')) {
     const positionals = positionalArgs(commandArgs.slice(2));
     const table = flags.table || positionals[0] || '';
@@ -2210,6 +2222,7 @@ Usage:
   opg schema manifest
   opg schema table create --name customers --columns email:text,name:text
   opg schema table create --name customers --columns email:text,name:text --apply
+  opg schema table drop customers --confirm drop:customers --apply
   opg schema column add customers --name phone --type text
   opg schema column add customers --name phone --type text --apply
 

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AdminRoleGuard } from '../../common/guards/admin-role.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -34,6 +34,12 @@ export class AppSchemaPlatformController {
     @Body() body: Record<string, unknown>,
   ) {
     return this.appSchemaService.addColumn(appId, table, req.user, body || {});
+  }
+
+  @Delete('apps/:app_id/schema/tables/:table')
+  @ApiOperation({ summary: '结构化删除 app 数据表，默认 dry-run' })
+  async dropAppDataTable(@Req() req: any, @Param('app_id') appId: string, @Param('table') table: string, @Body() body: Record<string, unknown>) {
+    return this.appSchemaService.dropTable(appId, table, req.user, body || {});
   }
 
   @Post('apps/:app_id/schema/tables/:table/policies')
