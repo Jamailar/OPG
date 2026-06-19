@@ -82,6 +82,10 @@ async function main() {
     await runFunctionCommand(args.slice(1));
     return;
   }
+  if (command === 'workflow' || command === 'workflows') {
+    await runWorkflowCommand(args.slice(1));
+    return;
+  }
   if (command === 'app' || command === 'apps') {
     await runAppCommand(args.slice(1));
     return;
@@ -480,6 +484,51 @@ async function runFunctionCommand(commandArgs: string[]) {
   throw new Error(`Unknown function command: ${action}`);
 }
 
+async function runWorkflowCommand(commandArgs: string[]) {
+  const action = commandArgs[0] || 'list';
+  const flags = parseFlags(commandArgs.slice(1));
+  const positionals = positionalArgs(commandArgs.slice(1));
+
+  if (action === 'run' || action === 'invoke') {
+    const slug = flags.workflow || flags.slug || positionals[0] || '';
+    if (!slug) throw new Error('Missing workflow slug. Use: opg workflow run <slug> --json {...}');
+    const client = await getClientFromLocalConfigWithFlagOverrides(flags);
+    printJson(await client.workflows.run(slug, parseJsonPayload(flags)));
+    return;
+  }
+
+  const local = await readOptionalLocalConfig();
+  const appId = flags.appId || flags['app-id'] || flags.app || local.app || '';
+  if (!appId) {
+    throw new Error('Missing app id or slug. Use --app-id <id-or-slug> or run opg app use <slug>.');
+  }
+  const client = await getPlatformClientFromLocalConfigWithFlagOverrides(flags);
+
+  if (action === 'list' || action === 'ls') {
+    printJson(await client.apps.workflows.list(appId));
+    return;
+  }
+  if (action === 'create') {
+    const payload = flags.json || flags.body
+      ? parseJsonPayload(flags)
+      : {
+          slug: flags.slug || flags.name || positionals[0] || '',
+          steps: flags.steps ? JSON.parse(flags.steps) : [{ id: 'noop', type: 'noop' }],
+          trigger: flags.trigger ? JSON.parse(flags.trigger) : { type: 'manual' },
+        };
+    printJson(await client.apps.workflows.create(appId, payload));
+    return;
+  }
+  if (action === 'runs') {
+    const workflowId = flags.workflowId || flags['workflow-id'] || flags.workflow || flags.slug || positionals[0] || '';
+    if (!workflowId) throw new Error('Missing workflow id or slug. Use: opg workflow runs <slug>');
+    printJson(await client.apps.workflows.runs(appId, workflowId));
+    return;
+  }
+
+  throw new Error(`Unknown workflow command: ${action}`);
+}
+
 async function runAppCommand(commandArgs: string[]) {
   const action = commandArgs[0] || 'list';
   const flags = parseFlags(commandArgs.slice(1));
@@ -823,6 +872,34 @@ async function startMcpServer() {
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     async ({ slug, payload }: any) => toToolResult(await client.functions.invoke(slug, payload)),
+  );
+
+  registerTool(
+    'opg_workflow_create',
+    {
+      title: 'Create OPG App Workflow',
+      description: 'Create an app workflow definition with ordered steps.',
+      inputSchema: {
+        appId: z.string().min(1).describe('Tenant app id or slug.'),
+        payload: z.record(z.unknown()).describe('Workflow payload: slug, trigger, steps.'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ appId, payload }: any) => toToolResult(await platformClient.apps.workflows.create(appId, payload)),
+  );
+
+  registerTool(
+    'opg_workflow_run',
+    {
+      title: 'Run OPG App Workflow',
+      description: 'Run a deployed app workflow through the app-scoped API.',
+      inputSchema: {
+        slug: z.string().min(1).describe('Workflow slug.'),
+        payload: z.record(z.unknown()).describe('Run payload, usually { input }.'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ slug, payload }: any) => toToolResult(await client.workflows.run(slug, payload)),
   );
 
   registerTool(
@@ -1922,7 +1999,7 @@ function parseScopesFlag(flags: Record<string, string>) {
   return raw.split(',').map((item) => item.trim()).filter(Boolean);
 }
 
-type HelpTopic = 'root' | 'init' | 'login' | 'app' | 'db' | 'schema' | 'data' | 'function' | 'platform' | 'codex' | 'mcp';
+type HelpTopic = 'root' | 'init' | 'login' | 'app' | 'db' | 'schema' | 'data' | 'function' | 'workflow' | 'platform' | 'codex' | 'mcp';
 
 function isHelpRequest(commandArgs: string[]) {
   return commandArgs.length === 0 || commandArgs.some(isHelpToken);
@@ -1937,7 +2014,8 @@ function resolveHelpTopic(commandArgs: string[]): HelpTopic {
   if (firstTopic === 'database') return 'db';
   if (firstTopic === 'apps') return 'app';
   if (firstTopic === 'functions') return 'function';
-  if (['init', 'login', 'app', 'db', 'schema', 'data', 'function', 'platform', 'codex', 'mcp'].includes(firstTopic)) {
+  if (firstTopic === 'workflows') return 'workflow';
+  if (['init', 'login', 'app', 'db', 'schema', 'data', 'function', 'workflow', 'platform', 'codex', 'mcp'].includes(firstTopic)) {
     return firstTopic as HelpTopic;
   }
   return 'root';
@@ -2113,6 +2191,21 @@ Notes:
     return;
   }
 
+  if (topic === 'workflow') {
+    console.log(`OPG CLI - workflow
+
+Usage:
+  opg workflow list --app-id <app>
+  opg workflow create --app-id <app> --slug onboard --steps '[{"id":"noop","type":"noop"}]'
+  opg workflow run onboard --json '{"input":{"id":"123"}}'
+  opg workflow runs --app-id <app> onboard
+
+Notes:
+  First-class step types: data.query, data.create, function.invoke, noop.
+`);
+    return;
+  }
+
   if (topic === 'platform') {
     console.log(`OPG CLI - platform
 
@@ -2207,6 +2300,7 @@ Core commands:
   schema        Create structured app data tables and columns.
   data          Read and write registered app data rows.
   function      Create, deploy, invoke, and inspect app functions.
+  workflow      Create, run, and inspect app workflows.
   platform      Call platform control-plane APIs.
   codex         Write Codex MCP config.
   mcp           Start MCP server over stdio.
@@ -2220,6 +2314,7 @@ Common flow:
   opg schema table create --name customers --columns email:text --apply
   opg data list customers
   opg function invoke sync_customer --json '{"input":{"id":"123"}}'
+  opg workflow run onboard --json '{"input":{"id":"123"}}'
   opg codex install
 
 Help:
@@ -2230,6 +2325,7 @@ Help:
   opg schema --help
   opg data --help
   opg function --help
+  opg workflow --help
   opg platform --help
 `);
 }
