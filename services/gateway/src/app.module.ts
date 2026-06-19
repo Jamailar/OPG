@@ -23,6 +23,7 @@ import { BootstrapModule } from './modules/bootstrap/bootstrap.module';
 import { PlatformTasksModule } from './modules/platform-tasks/platform-tasks.module';
 import { AppSchemaModule } from './modules/app-schema/app-schema.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
+import { AppFunctionsModule } from './modules/app-functions/app-functions.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
@@ -52,6 +53,7 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
     PlatformTasksModule,
     RealtimeModule,
     AppSchemaModule,
+    AppFunctionsModule,
     BootstrapModule,
   ],
   providers: [
