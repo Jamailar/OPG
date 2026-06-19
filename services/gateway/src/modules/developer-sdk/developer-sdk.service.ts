@@ -25,7 +25,7 @@ type ManifestOptions = {
   routePrefix: string;
 };
 
-const SDK_MANIFEST_VERSION = '2026-06-16';
+const SDK_MANIFEST_VERSION = '2026-06-20';
 
 @Injectable()
 export class DeveloperSdkService {
@@ -82,6 +82,49 @@ export class DeveloperSdkService {
           ddl_dry_run: true,
           ddl_apply: true,
         },
+        app_schema: {
+          manifest: true,
+          create_table: true,
+          drop_table: true,
+          add_column: true,
+          policy_templates: true,
+        },
+        data_api: {
+          schema: true,
+          list: true,
+          get: true,
+          create: true,
+          update: true,
+          delete: true,
+        },
+        functions: {
+          create: true,
+          deploy: true,
+          invoke: true,
+          runs: true,
+          delete: true,
+        },
+        workflows: {
+          create: true,
+          run: true,
+          runs: true,
+          delete: true,
+        },
+        ai_blocks: {
+          upsert: true,
+          run: true,
+        },
+        video_blocks: {
+          upsert: true,
+          run: true,
+        },
+        storage_blocks: {
+          save: true,
+        },
+        build_observability: {
+          summary: true,
+          events: true,
+        },
         api_catalog: true,
         developer_smoke_test: true,
       },
@@ -98,6 +141,23 @@ export class DeveloperSdkService {
         database_table: '/sdk/database/tables/{table}',
         database_query: '/sdk/database/query',
         database_execute: '/sdk/database/execute',
+        data_schema: '/data/schema',
+        data_table: '/data/{table}',
+        data_row: '/data/{table}/{id}',
+        functions_list: '/api/v1/platform-admin/apps/{app}/functions',
+        functions_runtime_status: '/api/v1/platform-admin/functions/runtime/status',
+        function_invoke: '/functions/{slug}/invoke',
+        workflows_list: '/api/v1/platform-admin/apps/{app}/workflows',
+        workflows_runtime_status: '/api/v1/platform-admin/workflows/runtime/status',
+        workflow_run: '/workflows/{slug}/run',
+        schema_manifest: '/api/v1/platform-admin/apps/{app}/schema/manifest',
+        schema_table: '/api/v1/platform-admin/apps/{app}/schema/tables/{table}',
+        schema_policies: '/api/v1/platform-admin/apps/{app}/schema/tables/{table}/policies',
+        ai_block_run: '/api/v1/platform-admin/apps/{app}/blocks/ai/{block}/run',
+        video_block_run: '/api/v1/platform-admin/apps/{app}/blocks/video/{block}/run',
+        storage_save: '/api/v1/platform-admin/apps/{app}/storage/save',
+        build_summary: '/api/v1/platform-admin/apps/{app}/build/summary',
+        build_events: '/api/v1/platform-admin/apps/{app}/build/events',
         models: '/models',
         model_pricing: '/models/pricing',
         chat_completions: '/chat/completions',
