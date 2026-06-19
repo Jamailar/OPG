@@ -1792,9 +1792,14 @@ function parseFlags(commandArgs: string[]) {
       continue;
     }
     const [rawKey, inlineValue] = current.slice(2).split('=', 2);
-    flags[rawKey] = inlineValue ?? commandArgs[index + 1] ?? '';
-    if (inlineValue === undefined) {
+    const next = commandArgs[index + 1];
+    if (inlineValue !== undefined) {
+      flags[rawKey] = inlineValue;
+    } else if (next && !next.startsWith('--')) {
+      flags[rawKey] = next;
       index += 1;
+    } else {
+      flags[rawKey] = 'true';
     }
   }
   return flags;
