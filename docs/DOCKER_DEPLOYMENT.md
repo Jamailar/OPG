@@ -10,6 +10,46 @@ OPG 支持同一份 Dockerfile 生成三种运行镜像：
 
 PostgreSQL 和 Redis 不打包进应用镜像。单机部署推荐使用根目录 `docker-compose.yml` 编排 OPG 应用容器、PostgreSQL 和 Redis；生产规模化部署可以改用外部托管数据库/Redis，并通过环境变量连接。
 
+## 使用预构建镜像
+
+发布 `opg-system/vX.Y.Z` tag 后，GitHub Actions 会把默认单容器镜像推送到 GHCR：
+
+```bash
+docker pull ghcr.io/<owner>/opg-system:<version>
+```
+
+单容器运行：
+
+```bash
+docker run --rm -p 3000:3000 \
+  -e NODE_ENV=production \
+  -e PORT=3000 \
+  -e DATABASE_URL='postgresql://opg:password@postgres.example.com:5432/opg' \
+  -e REDIS_URL='redis://redis.example.com:6379/0' \
+  -e JWT_SECRET_KEY='replace-with-long-random-secret' \
+  -e PLATFORM_SECRETS_KEY='replace-with-long-random-secret' \
+  ghcr.io/<owner>/opg-system:<version>
+```
+
+如果希望同时启动 PostgreSQL 和 Redis，使用发布版 Compose 文件：
+
+```bash
+OPG_IMAGE=ghcr.io/<owner>/opg-system:<version> \
+JWT_SECRET_KEY='replace-with-long-random-secret' \
+PLATFORM_SECRETS_KEY='replace-with-long-random-secret' \
+POSTGRES_PASSWORD='replace-with-strong-password' \
+docker compose -f docker-compose.release.yml up -d
+```
+
+分离部署镜像：
+
+```bash
+docker pull ghcr.io/<owner>/opg-system-gateway:<version>
+docker pull ghcr.io/<owner>/opg-system-web:<version>
+```
+
+发布流程见 [RELEASE.md](RELEASE.md)。首次公开发布后，需要在 GitHub Packages 把 GHCR package visibility 调成 public。
+
 ## 单容器部署
 
 这里的“单容器”指 OPG 应用自身是一个容器：Gateway API 和 Web 静态资源同进程同端口。数据库和 Redis 是基础设施依赖，仍由 Compose 或托管服务提供。

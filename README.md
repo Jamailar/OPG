@@ -399,6 +399,41 @@ OPG_BASE_URL=https://api.example.com OPG_APP_SLUG=your-app OPG_API_KEY=opg_dev_x
 
 真实密钥不进入仓库。需要环境变量时，从各子项目的 `.env.example` 复制成本地 `.env`。
 
+## 发布与 Docker 镜像
+
+OPG 使用模块级 SemVer 和 tag-based release。发布版 Docker 镜像由 GitHub Actions 在 tag push 后自动构建。
+
+| Tag | 版本来源 | 自动产物 |
+| --- | --- | --- |
+| `opg-system/vX.Y.Z` | 根 `package.json` | `ghcr.io/<owner>/opg-system`、`opg-system-gateway`、`opg-system-web` |
+| `opg-gateway/vX.Y.Z` | `services/gateway/package.json` | `ghcr.io/<owner>/opg-system-gateway` |
+| `opg-web/vX.Y.Z` | `apps/web/package.json` | `ghcr.io/<owner>/opg-system-web` |
+| `opg-sdk/vX.Y.Z` | `packages/sdk/package.json` | `opg-sdk` npm package |
+| `opg-cli/vX.Y.Z` | `packages/cli/package.json` | `@jamba/opg-cli` npm package |
+
+准备版本号：
+
+```bash
+npm run release:bump -- system minor
+git add package.json package-lock.json
+git commit -m "chore(release): release 0.2.0"
+git tag opg-system/v0.2.0
+git push origin main opg-system/v0.2.0
+```
+
+用户可直接拉单容器镜像部署：
+
+```bash
+docker run --rm -p 3000:3000 \
+  -e DATABASE_URL='postgresql://opg:password@postgres.example.com:5432/opg' \
+  -e REDIS_URL='redis://redis.example.com:6379/0' \
+  -e JWT_SECRET_KEY='replace-with-long-random-secret' \
+  -e PLATFORM_SECRETS_KEY='replace-with-long-random-secret' \
+  ghcr.io/<owner>/opg-system:0.2.0
+```
+
+完整发布流程见 [docs/RELEASE.md](docs/RELEASE.md)，Docker 部署说明见 [docs/DOCKER_DEPLOYMENT.md](docs/DOCKER_DEPLOYMENT.md)。
+
 ## 实现分工
 
 必须用现成库或官方 SDK 的地方：
@@ -439,6 +474,7 @@ OPG_BASE_URL=https://api.example.com OPG_APP_SLUG=your-app OPG_API_KEY=opg_dev_x
 ## 文档导航
 
 - 产品架构：[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- Release 流程：[docs/RELEASE.md](docs/RELEASE.md)
 - Docker 部署：[docs/DOCKER_DEPLOYMENT.md](docs/DOCKER_DEPLOYMENT.md)
 - 环境变量控制面：[docs/ENVIRONMENT_CONTROL_PLANE.md](docs/ENVIRONMENT_CONTROL_PLANE.md)
 - 协议索引：[protocols/README.md](protocols/README.md)

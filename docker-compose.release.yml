@@ -1,0 +1,60 @@
+services:
+  opg:
+    image: ${OPG_IMAGE:?Set OPG_IMAGE=ghcr.io/<owner>/opg-system:<version>}
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://opg:${POSTGRES_PASSWORD:-opg_local_password}@postgres:5432/${POSTGRES_DB:-opg_system}?schema=public
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY}
+      PLATFORM_SECRETS_KEY: ${PLATFORM_SECRETS_KEY:?Set PLATFORM_SECRETS_KEY}
+      OPG_RUN_MIGRATIONS: ${OPG_RUN_MIGRATIONS:-true}
+    ports:
+      - "${OPG_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - node -e "fetch('http://127.0.0.1:3000/readyz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: opg
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-opg_local_password}
+      POSTGRES_DB: ${POSTGRES_DB:-opg_system}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opg -d $${POSTGRES_DB:-opg_system}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
