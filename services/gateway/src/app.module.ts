@@ -21,6 +21,7 @@ import { DeveloperSdkModule } from './modules/developer-sdk/developer-sdk.module
 import { ObservabilityModule } from './modules/observability/observability.module';
 import { BootstrapModule } from './modules/bootstrap/bootstrap.module';
 import { PlatformTasksModule } from './modules/platform-tasks/platform-tasks.module';
+import { AppSchemaModule } from './modules/app-schema/app-schema.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
@@ -48,6 +49,7 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
     RuntimeSettingsModule,
     DeveloperSdkModule,
     PlatformTasksModule,
+    AppSchemaModule,
     BootstrapModule,
   ],
   providers: [
