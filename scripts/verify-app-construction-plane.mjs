@@ -23,6 +23,11 @@ const client = createOpgClient({ baseUrl, app, apiKey });
 const platform = createOpgPlatformClient({ baseUrl, platformToken });
 const startedAt = Date.now();
 const evidence = {};
+const createdResources = {
+  table: false,
+  function: false,
+  workflow: false,
+};
 
 try {
   evidence.schema = await platform.apps.schema.createTable(app, {
@@ -31,6 +36,7 @@ try {
     soft_delete: true,
     dry_run: false,
   });
+  createdResources.table = true;
   const created = await client.data.table(table).create({ email: `verify-${suffix}@example.com`, name: 'Verifier' });
   evidence.data_create = created;
   evidence.data_list = await client.data.table(table).list({ limit: 5 });
@@ -39,8 +45,10 @@ try {
     slug: fn,
     source: { kind: 'transform', pick: ['email'], set: { verified: true } },
   });
+  createdResources.function = true;
   evidence.function_deploy = await platform.apps.functions.deploy(app, fn);
   evidence.function_invoke = await client.functions.invoke(fn, { input: { email: `verify-${suffix}@example.com` } });
+  evidence.function_run = await waitForLatestSucceededRun(() => platform.apps.functions.runs(app, fn), 'function');
 
   evidence.workflow_create = await platform.apps.workflows.create(app, {
     slug: workflow,
@@ -49,15 +57,20 @@ try {
       { id: 'call_function', type: 'function.invoke', function: fn, input: { email: `verify-${suffix}@example.com` } },
     ],
   });
+  createdResources.workflow = true;
   evidence.workflow_run = await client.workflows.run(workflow, { input: { email: `verify-${suffix}@example.com` } });
+  evidence.workflow_run_result = await waitForLatestSucceededRun(() => platform.apps.workflows.runs(app, workflow), 'workflow');
   evidence.build_summary = await platform.apps.build.summary(app);
   evidence.build_events = await platform.apps.build.events(app, { limit: 10 });
   evidence.cleanup_workflow = await platform.apps.workflows.delete(app, workflow, { confirm: `delete:${workflow}` });
+  createdResources.workflow = false;
   evidence.cleanup_function = await platform.apps.functions.delete(app, fn, { confirm: `delete:${fn}` });
+  createdResources.function = false;
   evidence.cleanup_table = await platform.apps.schema.dropTable(app, table, {
     dry_run: false,
     confirm: `drop:${table}`,
   });
+  createdResources.table = false;
 
   console.log(JSON.stringify({
     ok: true,
@@ -73,6 +86,7 @@ try {
     execution_ms: Date.now() - startedAt,
   }, null, 2));
 } catch (error) {
+  evidence.cleanup_after_failure = await cleanupBestEffort(platform, app, { table, fn, workflow }, createdResources);
   console.error(JSON.stringify({
     ok: false,
     app,
@@ -82,6 +96,62 @@ try {
     execution_ms: Date.now() - startedAt,
   }, null, 2));
   process.exit(1);
+}
+
+async function waitForLatestSucceededRun(fetchRuns, label) {
+  const deadline = Date.now() + Number(process.env.OPG_VERIFIER_RUN_TIMEOUT_MS || 30000);
+  let latest = null;
+  while (Date.now() < deadline) {
+    const result = await fetchRuns();
+    latest = pickLatestRun(result);
+    if (latest?.status === 'SUCCEEDED') {
+      return latest;
+    }
+    if (latest?.status === 'FAILED') {
+      throw new Error(`${label} run failed: ${latest.error_message || latest.error || latest.id || 'unknown error'}`);
+    }
+    await sleep(500);
+  }
+  throw new Error(`${label} run did not reach SUCCEEDED before timeout${latest?.status ? ` (last status: ${latest.status})` : ''}`);
+}
+
+function pickLatestRun(result) {
+  const items = Array.isArray(result?.items) ? result.items : Array.isArray(result) ? result : [];
+  if (!items.length) return null;
+  return [...items].sort((left, right) => {
+    const leftTime = Date.parse(left.created_at || left.createdAt || left.updated_at || left.updatedAt || 0);
+    const rightTime = Date.parse(right.created_at || right.createdAt || right.updated_at || right.updatedAt || 0);
+    return rightTime - leftTime;
+  })[0];
+}
+
+async function cleanupBestEffort(platformClient, appSlug, resources, created) {
+  const cleanup = {};
+  if (created.workflow) {
+    cleanup.workflow = await swallow(() => platformClient.apps.workflows.delete(appSlug, resources.workflow, { confirm: `delete:${resources.workflow}` }));
+  }
+  if (created.function) {
+    cleanup.function = await swallow(() => platformClient.apps.functions.delete(appSlug, resources.fn, { confirm: `delete:${resources.fn}` }));
+  }
+  if (created.table) {
+    cleanup.table = await swallow(() => platformClient.apps.schema.dropTable(appSlug, resources.table, {
+      dry_run: false,
+      confirm: `drop:${resources.table}`,
+    }));
+  }
+  return cleanup;
+}
+
+async function swallow(callback) {
+  try {
+    return await callback();
+  } catch (error) {
+    return { ok: false, error: formatError(error) };
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function parseFlags(args) {
