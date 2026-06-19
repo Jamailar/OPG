@@ -350,6 +350,20 @@ export interface PlatformAppSchemaManifest {
   };
 }
 
+export interface PlatformAppBuildSummary {
+  app: { id: string; slug: string; name?: string };
+  summary: Record<string, number>;
+}
+
+export interface PlatformAppBuildEventItem {
+  source: string;
+  event: string;
+  resource_type: string;
+  resource_id: string | null;
+  payload?: Record<string, unknown> | null;
+  created_at: string;
+}
+
 export interface AppApiKeyItem {
   id: string;
   name: string;
@@ -2793,6 +2807,16 @@ export const platformApi = {
 
   addAppDataColumn: async (appId: string, table: string, payload: Record<string, unknown>) => {
     const response = await apiClient.getClient().post(`/platform-admin/apps/${appId}/schema/tables/${table}/columns`, payload);
+    return response.data?.data || response.data;
+  },
+
+  getAppBuildSummary: async (appId: string): Promise<PlatformAppBuildSummary> => {
+    const response = await apiClient.getClient().get(`/platform-admin/apps/${appId}/build/summary`);
+    return response.data?.data || response.data;
+  },
+
+  getAppBuildEvents: async (appId: string, limit = 20): Promise<{ items: PlatformAppBuildEventItem[]; limit: number }> => {
+    const response = await apiClient.getClient().get(`/platform-admin/apps/${appId}/build/events`, { params: { limit } });
     return response.data?.data || response.data;
   },
 

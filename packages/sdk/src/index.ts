@@ -230,6 +230,10 @@ export type OpgPlatformClient = {
       runVideo(appId: string, block: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
       saveStorage(appId: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
     };
+    build: {
+      summary(appId: string): Promise<Record<string, unknown>>;
+      events(appId: string, query?: OpgQuery): Promise<Record<string, unknown>>;
+    };
   };
   runtimeSettings: {
     get(): Promise<Record<string, unknown>>;
@@ -704,6 +708,10 @@ export function createOpgPlatformClient(options: OpgClientOptions): OpgPlatformC
         runAi: (appId, block, input) => request(appPath(appId, `/blocks/ai/${encodeURIComponent(block)}/run`), { method: 'POST', body: input }),
         runVideo: (appId, block, input) => request(appPath(appId, `/blocks/video/${encodeURIComponent(block)}/run`), { method: 'POST', body: input }),
         saveStorage: (appId, input) => request(appPath(appId, '/storage/save'), { method: 'POST', body: input }),
+      },
+      build: {
+        summary: (appId) => request(appPath(appId, '/build/summary')),
+        events: (appId, query) => request(appPath(appId, '/build/events'), { query }),
       },
     },
     runtimeSettings: {

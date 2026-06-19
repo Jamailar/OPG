@@ -26,6 +26,7 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
 import { AppFunctionsModule } from './modules/app-functions/app-functions.module';
 import { AppWorkflowsModule } from './modules/app-workflows/app-workflows.module';
 import { AppBlocksModule } from './modules/app-blocks/app-blocks.module';
+import { AppBuildObservabilityModule } from './modules/app-build-observability/app-build-observability.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
@@ -58,6 +59,7 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
     AppFunctionsModule,
     AppBlocksModule,
     AppWorkflowsModule,
+    AppBuildObservabilityModule,
     BootstrapModule,
   ],
   providers: [

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { platformApi } from '@/lib/api';
-import type { PlatformAppSchemaManifest, PlatformAppSchemaTable } from '@/lib/api';
+import type { PlatformAppBuildEventItem, PlatformAppBuildSummary, PlatformAppSchemaManifest, PlatformAppSchemaTable } from '@/lib/api';
 import { pickApiErrorMessage } from '@/lib/api-response';
 
 type Message = { type: 'success' | 'error'; text: string } | null;
@@ -26,6 +26,8 @@ function parseColumnSpecs(value: string) {
 
 export default function TenantBuildDataPanel({ appId, appSlug, onMessage }: TenantBuildDataPanelProps) {
   const [manifest, setManifest] = useState<PlatformAppSchemaManifest | null>(null);
+  const [buildSummary, setBuildSummary] = useState<PlatformAppBuildSummary | null>(null);
+  const [buildEvents, setBuildEvents] = useState<PlatformAppBuildEventItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [savingTable, setSavingTable] = useState(false);
   const [savingColumn, setSavingColumn] = useState(false);
@@ -54,6 +56,12 @@ export default function TenantBuildDataPanel({ appId, appSlug, onMessage }: Tena
     try {
       const nextManifest = await platformApi.getAppSchemaManifest(appId);
       setManifest(nextManifest);
+      const [summary, events] = await Promise.all([
+        platformApi.getAppBuildSummary(appId).catch(() => null),
+        platformApi.getAppBuildEvents(appId, 12).catch(() => ({ items: [] })),
+      ]);
+      setBuildSummary(summary);
+      setBuildEvents(events.items || []);
       if (!selectedTableSlug && nextManifest.schema.tables[0]) {
         setSelectedTableSlug(nextManifest.schema.tables[0].slug);
       }
@@ -263,6 +271,38 @@ export default function TenantBuildDataPanel({ appId, appSlug, onMessage }: Tena
           </div>
         </section>
       )}
+
+      <section className="card">
+        <div className="platform-section-head">
+          <div>
+            <h3>Activity</h3>
+            <p>{buildSummary ? `${buildSummary.summary.schema_events || 0} schema · ${buildSummary.summary.function_runs || 0} functions · ${buildSummary.summary.workflow_runs || 0} workflows` : '-'}</p>
+          </div>
+        </div>
+        <div className="platform-api-table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Source</th>
+                <th>Event</th>
+                <th>Resource</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {buildEvents.map((event) => (
+                <tr key={`${event.source}-${event.resource_id}-${event.created_at}`}>
+                  <td>{event.source}</td>
+                  <td>{event.event}</td>
+                  <td>{event.resource_type}</td>
+                  <td>{new Date(event.created_at).toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!buildEvents.length && <div className="loading">暂无事件</div>}
+        </div>
+      </section>
     </div>
   );
 }
