@@ -214,12 +214,17 @@ async function runStartupMigrations(prisma: PrismaClient) {
         `SELECT version, checksum FROM gateway_schema_migrations`,
       ) as Promise<Array<{ version: string; checksum: string }>>);
       const applied = new Map(appliedRows.map((row) => [row.version, row.checksum]));
-      const prismaAppliedRows = await (tx.$queryRawUnsafe(
-        `SELECT migration_name
-           FROM _prisma_migrations
-          WHERE finished_at IS NOT NULL
-            AND rolled_back_at IS NULL`,
-      ) as Promise<Array<{ migration_name: string }>>).catch(() => []);
+      const prismaMigrationsTable = await (tx.$queryRawUnsafe(
+        `SELECT to_regclass('public._prisma_migrations')::text AS table_name`,
+      ) as Promise<Array<{ table_name: string | null }>>);
+      const prismaAppliedRows = prismaMigrationsTable[0]?.table_name
+        ? await (tx.$queryRawUnsafe(
+          `SELECT migration_name
+             FROM _prisma_migrations
+            WHERE finished_at IS NOT NULL
+              AND rolled_back_at IS NULL`,
+        ) as Promise<Array<{ migration_name: string }>>)
+        : [];
       const prismaApplied = new Set(prismaAppliedRows.map((row) => row.migration_name));
       let appliedCount = 0;
 
