@@ -304,6 +304,52 @@ export interface OpgSdkSmokeResult {
   next: Record<string, string>;
 }
 
+export interface PlatformAppSchemaColumn {
+  id: string;
+  slug: string;
+  physical_column_name: string;
+  data_type: string;
+  is_nullable: boolean;
+  is_unique?: boolean;
+  is_indexed?: boolean;
+  is_hidden?: boolean;
+  is_readonly?: boolean;
+  ordinal_position?: number;
+}
+
+export interface PlatformAppSchemaTable {
+  id: string;
+  slug: string;
+  physical_table_name: string;
+  display_name?: string | null;
+  description?: string | null;
+  primary_key: string;
+  owner_column?: string | null;
+  soft_delete_column?: string | null;
+  status: string;
+  columns: PlatformAppSchemaColumn[];
+}
+
+export interface PlatformAppSchemaManifest {
+  manifest_version: string;
+  app: {
+    id: string;
+    slug: string;
+    name: string;
+    status: string;
+  };
+  namespace: string;
+  capabilities: Record<string, unknown>;
+  schema: {
+    tables: PlatformAppSchemaTable[];
+  };
+  migrations: {
+    total: number;
+    applied: number;
+    latest_applied_at?: string | null;
+  };
+}
+
 export interface AppApiKeyItem {
   id: string;
   name: string;
@@ -2732,6 +2778,21 @@ export const platformApi = {
   revokeMyAppApiKey: async (appSlug: string, keyId: string) => {
     const base = runtimeContext.apiBaseUrl.replace(/\/+$/, '');
     const response = await apiClient.getClient().post(`${base}/${appSlug}/v1/users/me/api-keys/${keyId}/revoke`);
+    return response.data?.data || response.data;
+  },
+
+  getAppSchemaManifest: async (appId: string): Promise<PlatformAppSchemaManifest> => {
+    const response = await apiClient.getClient().get(`/platform-admin/apps/${appId}/schema/manifest`);
+    return response.data?.data || response.data;
+  },
+
+  createAppDataTable: async (appId: string, payload: Record<string, unknown>) => {
+    const response = await apiClient.getClient().post(`/platform-admin/apps/${appId}/schema/tables`, payload);
+    return response.data?.data || response.data;
+  },
+
+  addAppDataColumn: async (appId: string, table: string, payload: Record<string, unknown>) => {
+    const response = await apiClient.getClient().post(`/platform-admin/apps/${appId}/schema/tables/${table}/columns`, payload);
     return response.data?.data || response.data;
   },
 

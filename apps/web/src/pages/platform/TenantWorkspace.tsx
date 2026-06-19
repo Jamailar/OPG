@@ -53,11 +53,12 @@ import { pickApiData, pickApiErrorMessage } from '@/lib/api-response';
 import { runtimeContext } from '@/lib/runtime-context';
 import AppAiUsagePanel from '@/pages/platform/components/AppAiUsagePanel';
 import AppLogsPanel from '@/pages/platform/components/AppLogsPanel';
+import TenantBuildDataPanel from '@/pages/platform/components/TenantBuildDataPanel';
 import TenantApiDocsPanel from '@/pages/platform/components/TenantApiDocsPanel';
 import TenantAnalyticsPanel from '@/pages/platform/components/TenantAnalyticsPanel';
 
 type Message = { type: 'success' | 'error'; text: string } | null;
-type WorkspaceSection = 'overview' | 'analytics' | 'ai-usage' | 'logs' | 'api-docs' | 'developers' | 'admins' | 'ai-routing' | 'site' | 'email' | 'feedback' | 'acquisition' | 'redeem';
+type WorkspaceSection = 'overview' | 'build-data' | 'analytics' | 'ai-usage' | 'logs' | 'api-docs' | 'developers' | 'admins' | 'ai-routing' | 'site' | 'email' | 'feedback' | 'acquisition' | 'redeem';
 type RedeemSubPage = 'products' | 'product-create' | 'orders' | 'code-batches' | 'code-create' | 'codes' | 'redemptions';
 type ManualGrantIdentityType = 'email' | 'user_id' | 'phone';
 type AppModelCapabilityFilter = 'ALL' | PlatformAppAiModelRouteItem['model']['capability'] | 'voice_clone';
@@ -138,6 +139,7 @@ interface PaymentTestPayload {
 
 const WORKSPACE_NAV: Array<{ key: WorkspaceSection; label: string; desc: string }> = [
   { key: 'overview', label: '应用概览', desc: '统计、域名与关键配置' },
+  { key: 'build-data', label: 'Build / Data', desc: '表、字段与 Data API' },
   { key: 'analytics', label: '经营分析', desc: '用户、订单、账单统计' },
   { key: 'ai-usage', label: 'AI 调用统计', desc: '单 app 调用与消耗趋势' },
   { key: 'logs', label: '日志', desc: '请求、审计、AI 与任务' },
@@ -805,6 +807,7 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
     if (!adminAccess) return WORKSPACE_NAV.filter((item) => item.key === 'overview');
     return WORKSPACE_NAV.filter((item) => {
       if (item.key === 'overview') return true;
+      if (item.key === 'build-data') return isAppSuperAdmin;
       if (item.key === 'analytics') return hasAppPermission('app_analytics_read');
       if (item.key === 'ai-usage') return hasAppPermission('app_ai_usage_read');
       if (item.key === 'logs') return hasAppPermission('app_logs_read');
@@ -3267,6 +3270,14 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
   const renderAiUsage = () => <AppAiUsagePanel appId={appId} aiSources={aiSources} modelRoutes={modelRoutes} />;
 
   const renderLogs = () => <AppLogsPanel appId={appId} aiSources={aiSources} modelRoutes={modelRoutes} />;
+
+  const renderBuildData = () => (
+    <TenantBuildDataPanel
+      appId={appId}
+      appSlug={appDetail?.slug}
+      onMessage={setMessage}
+    />
+  );
 
   const renderApiDocs = () => <TenantApiDocsPanel app={appDetail} />;
 
@@ -6132,6 +6143,7 @@ const agents = await opg.agents.list();`}</pre>
           {message && <div className={`alert alert-${message.type}`}>{message.text}</div>}
 
           {activeSection === 'overview' && renderOverview()}
+          {activeSection === 'build-data' && renderBuildData()}
           {activeSection === 'analytics' && renderAnalytics()}
           {activeSection === 'ai-usage' && renderAiUsage()}
           {activeSection === 'logs' && renderLogs()}
