@@ -54,6 +54,30 @@ export type OpgDatabaseExecuteInput = {
   confirm?: string | boolean;
 };
 
+export type OpgSchemaTableInput = {
+  slug?: string;
+  name?: string;
+  display_name?: string;
+  displayName?: string;
+  description?: string;
+  owner_column?: string;
+  ownerColumn?: string;
+  soft_delete?: boolean;
+  softDelete?: boolean;
+  columns?: Array<Record<string, unknown>>;
+  dry_run?: boolean;
+  dryRun?: boolean;
+};
+
+export type OpgSchemaColumnInput = Record<string, unknown> & {
+  slug?: string;
+  name?: string;
+  data_type?: string;
+  dataType?: string;
+  dry_run?: boolean;
+  dryRun?: boolean;
+};
+
 type OpgClientInternals = {
   request<T = unknown>(path: string, options?: OpgRequestOptions): Promise<T>;
   stream(path: string, options?: OpgRequestOptions): AsyncIterable<string>;
@@ -155,6 +179,11 @@ export type OpgPlatformClient = {
       updatePermissions(appId: string, adminUserId: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
       updateStatus(appId: string, adminUserId: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
       remove(appId: string, adminUserId: string): Promise<Record<string, unknown>>;
+    };
+    schema: {
+      manifest(appId: string): Promise<Record<string, unknown>>;
+      createTable(appId: string, input: OpgSchemaTableInput): Promise<Record<string, unknown>>;
+      addColumn(appId: string, table: string, input: OpgSchemaColumnInput): Promise<Record<string, unknown>>;
     };
   };
   runtimeSettings: {
@@ -261,6 +290,16 @@ export type OpgClient = OpgClientInternals & {
     query(input: OpgDatabaseQueryInput): Promise<Record<string, unknown>>;
     execute(input: OpgDatabaseExecuteInput): Promise<Record<string, unknown>>;
   };
+  data: {
+    schema(): Promise<Record<string, unknown>>;
+    table(table: string): {
+      list(query?: OpgQuery): Promise<Record<string, unknown>>;
+      get(id: string, query?: OpgQuery): Promise<Record<string, unknown>>;
+      create(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+      update(id: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+      delete(id: string): Promise<Record<string, unknown>>;
+    };
+  };
 };
 
 export function createOpgClient(options: OpgClientOptions): OpgClient {
@@ -318,6 +357,16 @@ export function createOpgClient(options: OpgClientOptions): OpgClient {
       reader.releaseLock();
     }
   };
+  const dataTable = (table: string) => {
+    const encodedTable = encodeURIComponent(table);
+    return {
+      list: (query?: OpgQuery) => request<Record<string, unknown>>(`/data/${encodedTable}`, { query }),
+      get: (id: string, query?: OpgQuery) => request<Record<string, unknown>>(`/data/${encodedTable}/${encodeURIComponent(id)}`, { query }),
+      create: (input: Record<string, unknown>) => request<Record<string, unknown>>(`/data/${encodedTable}`, { method: 'POST', body: input }),
+      update: (id: string, input: Record<string, unknown>) => request<Record<string, unknown>>(`/data/${encodedTable}/${encodeURIComponent(id)}`, { method: 'PATCH', body: input }),
+      delete: (id: string) => request<Record<string, unknown>>(`/data/${encodedTable}/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    };
+  };
 
   return {
     platform,
@@ -365,6 +414,10 @@ export function createOpgClient(options: OpgClientOptions): OpgClient {
       describe: (table) => request(`/sdk/database/tables/${encodeURIComponent(table)}`),
       query: (input) => request('/sdk/database/query', { method: 'POST', body: input }),
       execute: (input) => request('/sdk/database/execute', { method: 'POST', body: input }),
+    },
+    data: {
+      schema: () => request<Record<string, unknown>>('/data/schema'),
+      table: dataTable,
     },
   };
 }
@@ -523,6 +576,12 @@ export function createOpgPlatformClient(options: OpgClientOptions): OpgPlatformC
         updateStatus: (appId, adminUserId, input) =>
           request(appPath(appId, `/admins/${encodeURIComponent(adminUserId)}/status`), { method: 'PATCH', body: input }),
         remove: (appId, adminUserId) => request(appPath(appId, `/admins/${encodeURIComponent(adminUserId)}`), { method: 'DELETE' }),
+      },
+      schema: {
+        manifest: (appId) => request(appPath(appId, '/schema/manifest')),
+        createTable: (appId, input) => request(appPath(appId, '/schema/tables'), { method: 'POST', body: input }),
+        addColumn: (appId, table, input) =>
+          request(appPath(appId, `/schema/tables/${encodeURIComponent(table)}/columns`), { method: 'POST', body: input }),
       },
     },
     runtimeSettings: {

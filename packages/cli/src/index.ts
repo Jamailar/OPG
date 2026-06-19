@@ -70,6 +70,14 @@ async function main() {
     await runDatabaseCommand(args.slice(1));
     return;
   }
+  if (command === 'schema') {
+    await runSchemaCommand(args.slice(1));
+    return;
+  }
+  if (command === 'data') {
+    await runDataCommand(args.slice(1));
+    return;
+  }
   if (command === 'app' || command === 'apps') {
     await runAppCommand(args.slice(1));
     return;
@@ -318,6 +326,103 @@ async function runDatabaseCommand(commandArgs: string[]) {
   }
 
   throw new Error(`Unknown database command: ${subcommand}`);
+}
+
+async function runSchemaCommand(commandArgs: string[]) {
+  const resource = commandArgs[0] || 'manifest';
+  const action = commandArgs[1] || '';
+  const flags = parseFlags(commandArgs.slice(1));
+  const local = await readOptionalLocalConfig();
+  const appId = flags.appId || flags['app-id'] || flags.app || local.app || '';
+  if (!appId) {
+    throw new Error('Missing app id or slug. Use --app-id <id-or-slug> or run opg app use <slug>.');
+  }
+  const client = await getPlatformClientFromLocalConfigWithFlagOverrides(flags);
+
+  if (resource === 'manifest') {
+    printJson(await client.apps.schema.manifest(appId));
+    return;
+  }
+  if ((resource === 'table' || resource === 'tables') && action === 'create') {
+    const payload = {
+      ...(flags.json ? JSON.parse(flags.json) : {}),
+      ...(flags.name ? { name: flags.name } : {}),
+      ...(flags.slug ? { slug: flags.slug } : {}),
+      ...(flags.displayName || flags['display-name'] ? { display_name: flags.displayName || flags['display-name'] } : {}),
+      ...(flags.description ? { description: flags.description } : {}),
+      ...(flags.columns ? { columns: parseColumnSpecs(flags.columns) } : {}),
+      ...(flags['owner-column'] || flags.ownerColumn ? { owner_column: flags['owner-column'] || flags.ownerColumn } : {}),
+      ...(flags['soft-delete'] || flags.softDelete ? { soft_delete: parseBooleanFlag(flags['soft-delete'] || flags.softDelete) } : {}),
+      dry_run: flags.apply ? false : flags['dry-run'] === undefined ? true : parseBooleanFlag(flags['dry-run']),
+    };
+    printJson(await client.apps.schema.createTable(appId, payload));
+    return;
+  }
+  if ((resource === 'column' || resource === 'columns') && (action === 'add' || action === 'create')) {
+    const positionals = positionalArgs(commandArgs.slice(2));
+    const table = flags.table || positionals[0] || '';
+    if (!table) {
+      throw new Error('Missing table. Use: opg schema column add <table> --name email --type text');
+    }
+    const payload = {
+      ...(flags.json ? JSON.parse(flags.json) : {}),
+      ...(flags.name ? { name: flags.name } : {}),
+      ...(flags.slug ? { slug: flags.slug } : {}),
+      ...(flags.type || flags['data-type'] || flags.dataType ? { data_type: flags.type || flags['data-type'] || flags.dataType } : {}),
+      ...(flags.nullable ? { nullable: parseBooleanFlag(flags.nullable) } : {}),
+      ...(flags.unique ? { unique: parseBooleanFlag(flags.unique) } : {}),
+      ...(flags.indexed ? { indexed: parseBooleanFlag(flags.indexed) } : {}),
+      dry_run: flags.apply ? false : flags['dry-run'] === undefined ? true : parseBooleanFlag(flags['dry-run']),
+    };
+    printJson(await client.apps.schema.addColumn(appId, table, payload));
+    return;
+  }
+
+  throw new Error(`Unknown schema command: ${resource} ${action}`);
+}
+
+async function runDataCommand(commandArgs: string[]) {
+  const action = commandArgs[0] || 'schema';
+  const flags = parseFlags(commandArgs.slice(1));
+  const client = await getClientFromLocalConfigWithFlagOverrides(flags);
+
+  if (action === 'schema') {
+    printJson(await client.data.schema());
+    return;
+  }
+  const positionals = positionalArgs(commandArgs.slice(1));
+  const table = flags.table || positionals[0] || '';
+  if (!table) {
+    throw new Error('Missing table. Use: opg data list <table>');
+  }
+  if (action === 'list' || action === 'ls') {
+    printJson(await client.data.table(table).list(parseQueryPayload(flags)));
+    return;
+  }
+  if (action === 'get') {
+    const id = flags.id || positionals[1] || '';
+    if (!id) throw new Error('Missing row id. Use: opg data get <table> <id>');
+    printJson(await client.data.table(table).get(id, parseQueryPayload(flags)));
+    return;
+  }
+  if (action === 'create') {
+    printJson(await client.data.table(table).create(parseJsonPayload(flags)));
+    return;
+  }
+  if (action === 'update') {
+    const id = flags.id || positionals[1] || '';
+    if (!id) throw new Error('Missing row id. Use: opg data update <table> <id> --json ...');
+    printJson(await client.data.table(table).update(id, parseJsonPayload(flags)));
+    return;
+  }
+  if (action === 'delete' || action === 'rm') {
+    const id = flags.id || positionals[1] || '';
+    if (!id) throw new Error('Missing row id. Use: opg data delete <table> <id>');
+    printJson(await client.data.table(table).delete(id));
+    return;
+  }
+
+  throw new Error(`Unknown data command: ${action}`);
 }
 
 async function runAppCommand(commandArgs: string[]) {
@@ -579,6 +684,48 @@ async function startMcpServer() {
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     async ({ appId, payload }: any) => toToolResult(await platformClient.apps.update(appId, payload)),
+  );
+
+  registerTool(
+    'opg_schema_manifest_get',
+    {
+      title: 'Get OPG App Schema Manifest',
+      description: 'Read the structured app schema registry manifest for a tenant app.',
+      inputSchema: {
+        appId: z.string().min(1).describe('Tenant app id or slug.'),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ appId }: any) => toToolResult(await platformClient.apps.schema.manifest(appId)),
+  );
+
+  registerTool(
+    'opg_schema_table_create',
+    {
+      title: 'Create OPG App Data Table',
+      description: 'Create or dry-run a structured app data table. Defaults to dry-run unless dryRun=false.',
+      inputSchema: {
+        appId: z.string().min(1).describe('Tenant app id or slug.'),
+        payload: z.record(z.unknown()).describe('Structured table payload: name/slug, columns, owner_column, soft_delete, dry_run.'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ appId, payload }: any) => toToolResult(await platformClient.apps.schema.createTable(appId, payload)),
+  );
+
+  registerTool(
+    'opg_schema_column_add',
+    {
+      title: 'Add OPG App Data Column',
+      description: 'Add or dry-run a structured app data column. Defaults to dry-run unless dryRun=false.',
+      inputSchema: {
+        appId: z.string().min(1).describe('Tenant app id or slug.'),
+        table: z.string().min(1).describe('Data table id or slug.'),
+        payload: z.record(z.unknown()).describe('Structured column payload: name/slug, data_type, nullable, indexed, dry_run.'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ appId, table, payload }: any) => toToolResult(await platformClient.apps.schema.addColumn(appId, table, payload)),
   );
 
   registerTool(
@@ -906,6 +1053,74 @@ async function startMcpServer() {
   );
 
   registerTool(
+    'opg_data_schema_get',
+    {
+      title: 'Get OPG Data API Schema',
+      description: 'Read the Data API schema for the configured OPG app.',
+      inputSchema: {},
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async () => toToolResult(await client.data.schema()),
+  );
+
+  registerTool(
+    'opg_data_rows_list',
+    {
+      title: 'List OPG Data Rows',
+      description: 'List rows from a registered app data table through the structured Data API.',
+      inputSchema: {
+        table: z.string().min(1),
+        query: z.record(z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ table, query }: any) => toToolResult(await client.data.table(table).list(query)),
+  );
+
+  registerTool(
+    'opg_data_row_create',
+    {
+      title: 'Create OPG Data Row',
+      description: 'Create a row in a registered app data table through the structured Data API.',
+      inputSchema: {
+        table: z.string().min(1),
+        payload: z.record(z.unknown()),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ table, payload }: any) => toToolResult(await client.data.table(table).create(payload)),
+  );
+
+  registerTool(
+    'opg_data_row_update',
+    {
+      title: 'Update OPG Data Row',
+      description: 'Update a row in a registered app data table through the structured Data API.',
+      inputSchema: {
+        table: z.string().min(1),
+        id: z.string().min(1),
+        payload: z.record(z.unknown()),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ table, id, payload }: any) => toToolResult(await client.data.table(table).update(id, payload)),
+  );
+
+  registerTool(
+    'opg_data_row_delete',
+    {
+      title: 'Delete OPG Data Row',
+      description: 'Delete or soft-delete a row in a registered app data table through the structured Data API.',
+      inputSchema: {
+        table: z.string().min(1),
+        id: z.string().min(1),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ table, id }: any) => toToolResult(await client.data.table(table).delete(id)),
+  );
+
+  registerTool(
     'opg_agents_list',
     {
       title: 'List OPG Agents',
@@ -1207,6 +1422,32 @@ function parseJsonPayload(flags: Record<string, string>) {
   return JSON.parse(raw);
 }
 
+function parseColumnSpecs(value: string) {
+  return String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => {
+      const [name, type = 'text'] = item.split(':').map((part) => part.trim());
+      return { name, data_type: type };
+    });
+}
+
+function positionalArgs(commandArgs: string[]) {
+  const result: string[] = [];
+  for (let index = 0; index < commandArgs.length; index += 1) {
+    const current = commandArgs[index];
+    if (current.startsWith('--')) {
+      if (!current.includes('=') && commandArgs[index + 1] && !commandArgs[index + 1].startsWith('--')) {
+        index += 1;
+      }
+      continue;
+    }
+    result.push(current);
+  }
+  return result;
+}
+
 function parseQueryPayload(flags: Record<string, string>): Record<string, string | number | boolean | null> {
   if (flags.query) {
     return JSON.parse(flags.query);
@@ -1214,6 +1455,9 @@ function parseQueryPayload(flags: Record<string, string>): Record<string, string
   const ignored = new Set([
     'app-id',
     'appId',
+    'app',
+    'table',
+    'id',
     'base-url',
     'baseUrl',
     'api-key',
@@ -1581,7 +1825,7 @@ function parseScopesFlag(flags: Record<string, string>) {
   return raw.split(',').map((item) => item.trim()).filter(Boolean);
 }
 
-type HelpTopic = 'root' | 'init' | 'login' | 'app' | 'db' | 'platform' | 'codex' | 'mcp';
+type HelpTopic = 'root' | 'init' | 'login' | 'app' | 'db' | 'schema' | 'data' | 'platform' | 'codex' | 'mcp';
 
 function isHelpRequest(commandArgs: string[]) {
   return commandArgs.length === 0 || commandArgs.some(isHelpToken);
@@ -1595,7 +1839,7 @@ function resolveHelpTopic(commandArgs: string[]): HelpTopic {
   const firstTopic = commandArgs.find((item) => !isHelpToken(item) && !item.startsWith('-')) || '';
   if (firstTopic === 'database') return 'db';
   if (firstTopic === 'apps') return 'app';
-  if (['init', 'login', 'app', 'db', 'platform', 'codex', 'mcp'].includes(firstTopic)) {
+  if (['init', 'login', 'app', 'db', 'schema', 'data', 'platform', 'codex', 'mcp'].includes(firstTopic)) {
     return firstTopic as HelpTopic;
   }
   return 'root';
@@ -1703,6 +1947,58 @@ Examples:
     return;
   }
 
+  if (topic === 'schema') {
+    console.log(`OPG CLI - schema
+
+Usage:
+  opg schema manifest
+  opg schema table create --name customers --columns email:text,name:text
+  opg schema table create --name customers --columns email:text,name:text --apply
+  opg schema column add customers --name phone --type text
+  opg schema column add customers --name phone --type text --apply
+
+Options:
+  --app-id <id-or-slug>  Target tenant app id or slug. Falls back to selected app.
+  --platform-token <jwt> Platform admin token. Usually loaded from opg login.
+  --json <json>          Structured schema payload.
+  --columns <spec>       Comma list like email:text,name:text.
+  --apply                Apply the schema change. Without this, commands dry-run.
+  --dry-run <bool>       Explicit dry-run flag.
+
+Examples:
+  opg schema manifest
+  opg schema table create --name customers --columns email:text,name:text --apply
+`);
+    return;
+  }
+
+  if (topic === 'data') {
+    console.log(`OPG CLI - data
+
+Usage:
+  opg data schema
+  opg data list customers --limit 20
+  opg data get customers <id>
+  opg data create customers --json '{"email":"a@example.com"}'
+  opg data update customers <id> --json '{"name":"Alice"}'
+  opg data delete customers <id>
+
+Options:
+  --base-url <url>       OPG gateway base URL.
+  --app <slug>           App slug.
+  --api-key <key>        App-scoped API key or developer grant.
+  --json <json>          Row payload for create/update.
+  --select <csv>         Fields to return.
+  --order <field.asc>    Sort field and direction.
+  --limit <number>       Row limit.
+
+Examples:
+  opg data list customers --select id,email --limit 20
+  opg data create customers --json '{"email":"a@example.com"}'
+`);
+    return;
+  }
+
   if (topic === 'platform') {
     console.log(`OPG CLI - platform
 
@@ -1794,6 +2090,8 @@ Core commands:
   manifest      Print current app SDK manifest.
   smoke         Run app SDK smoke test.
   db            Inspect or query app-owned database tables.
+  schema        Create structured app data tables and columns.
+  data          Read and write registered app data rows.
   platform      Call platform control-plane APIs.
   codex         Write Codex MCP config.
   mcp           Start MCP server over stdio.
@@ -1804,6 +2102,8 @@ Common flow:
   opg app create --name "Demo App" --slug demo
   opg login --app demo
   opg db smoke
+  opg schema table create --name customers --columns email:text --apply
+  opg data list customers
   opg codex install
 
 Help:
@@ -1811,6 +2111,8 @@ Help:
   opg login --help
   opg app --help
   opg db --help
+  opg schema --help
+  opg data --help
   opg platform --help
 `);
 }
