@@ -40,7 +40,7 @@ export class AppWorkflowsService implements OnModuleInit, OnApplicationShutdown 
       this.redis = new IORedis(redisUrl, { maxRetriesPerRequest: null, lazyConnect: true });
       await this.redis.connect();
       this.queue = new Queue('opg-app-workflows', { connection: this.redis as any });
-      this.worker = new Worker('opg-app-workflows', async (job) => this.runQueued(String(job.data?.run_id || '')), {
+      this.worker = new Worker('opg-app-workflows', async (job) => this.runQueued(String(job.data?.run_id || ''), this.deserializeQueuedActor(job.data?.actor)), {
         connection: this.redis as any,
         concurrency: Number(process.env.OPG_WORKFLOW_WORKER_CONCURRENCY || 2),
       });
@@ -125,7 +125,7 @@ export class AppWorkflowsService implements OnModuleInit, OnApplicationShutdown 
     const run = rows[0];
     await this.publishRun(app.slug, run.id, 'job.queued', { workflow: workflow.slug, status: run.status });
     if (this.queue) {
-      await this.queue.add('run', { run_id: run.id }, { removeOnComplete: 1000, removeOnFail: 1000 });
+      await this.queue.add('run', { run_id: run.id, actor: this.serializeQueuedActor(actor) }, { removeOnComplete: 1000, removeOnFail: 1000 });
       return { ok: true, queued: true, app, workflow: this.serializeWorkflow(workflow), run: this.serializeRun(run), runtime: this.runtimeStatus() };
     }
     const completed = await this.runQueued(run.id, actor);
@@ -315,6 +315,31 @@ export class AppWorkflowsService implements OnModuleInit, OnApplicationShutdown 
 
   private async publishRun(appSlug: string, runId: string, event: string, payload: Record<string, unknown>) {
     await this.realtimeEventsService.publish(`apps.${appSlug}.jobs.${runId}`, event, payload, { app_slug: appSlug, resource_id: runId });
+  }
+
+  private serializeQueuedActor(actor: any) {
+    if (!actor || typeof actor !== 'object') {
+      return { authMode: 'workflow' };
+    }
+    return {
+      id: this.optionalString(actor.id || actor.userId, 80),
+      userId: this.optionalString(actor.userId || actor.id, 80),
+      email: this.optionalString(actor.email, 180),
+      role: this.optionalString(actor.role, 40),
+      appSlug: this.optionalString(actor.appSlug, 100),
+      authMode: this.optionalString(actor.authMode, 40),
+      apiKeyId: this.optionalString(actor.apiKeyId, 80),
+      developerGrantId: this.optionalString(actor.developerGrantId, 80),
+      developerGrantName: this.optionalString(actor.developerGrantName, 160),
+      scopes: Array.isArray(actor.scopes) ? actor.scopes.map((item: unknown) => String(item)).slice(0, 80) : undefined,
+      developerScopes: Array.isArray(actor.developerScopes) ? actor.developerScopes.map((item: unknown) => String(item)).slice(0, 80) : undefined,
+      allowedAppIds: Array.isArray(actor.allowedAppIds) ? actor.allowedAppIds.map((item: unknown) => String(item)).slice(0, 200) : undefined,
+    };
+  }
+
+  private deserializeQueuedActor(value: unknown) {
+    const actor = this.jsonObject(value);
+    return Object.keys(actor).length ? actor : { authMode: 'workflow' };
   }
 
   private serializeWorkflow(row: AppWorkflowRow) {
