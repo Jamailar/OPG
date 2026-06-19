@@ -65,3 +65,40 @@ export type AppDataPolicyRow = {
   created_at: Date;
   updated_at: Date;
 };
+
+export type CreateAppDataColumnInput = {
+  slug?: string;
+  name?: string;
+  data_type?: string;
+  dataType?: string;
+  nullable?: boolean;
+  is_nullable?: boolean;
+  unique?: boolean;
+  is_unique?: boolean;
+  indexed?: boolean;
+  is_indexed?: boolean;
+  hidden?: boolean;
+  readonly?: boolean;
+  display?: Record<string, unknown>;
+  validation?: Record<string, unknown>;
+};
+
+export type CreateAppDataTableInput = {
+  slug?: string;
+  name?: string;
+  display_name?: string;
+  displayName?: string;
+  description?: string;
+  owner_column?: string;
+  ownerColumn?: string;
+  soft_delete?: boolean;
+  softDelete?: boolean;
+  columns?: CreateAppDataColumnInput[];
+  dry_run?: boolean;
+  dryRun?: boolean;
+};
+
+export type AddAppDataColumnInput = CreateAppDataColumnInput & {
+  dry_run?: boolean;
+  dryRun?: boolean;
+};
