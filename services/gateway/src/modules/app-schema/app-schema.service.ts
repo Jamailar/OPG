@@ -1,7 +1,8 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { createHash } from 'crypto';
 import { PRISMA_CLIENT } from '../../config/database.module';
+import { DeveloperAuthorizationService } from '../developer-sdk/developer-authorization.service';
 import {
   AddAppDataColumnInput,
   AppDataColumnRow,
@@ -34,7 +35,10 @@ const DATA_TYPES: Record<string, string> = {
 
 @Injectable()
 export class AppSchemaService {
-  constructor(@Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient) {}
+  constructor(
+    @Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient,
+    private readonly developerAuthorizationService: DeveloperAuthorizationService,
+  ) {}
 
   async getManifest(appRef: string) {
     const app = await this.resolveApp(appRef);
@@ -373,6 +377,184 @@ export class AppSchemaService {
     };
   }
 
+  async getDataSchema(appRef: string, actor: any) {
+    const { app } = await this.assertDataAccess(appRef, actor, 'read');
+    const manifest = await this.getManifest(app.id);
+    return {
+      app: manifest.app,
+      namespace: manifest.namespace,
+      tables: manifest.schema.tables.map((table: any) => ({
+        slug: table.slug,
+        display_name: table.display_name,
+        primary_key: table.primary_key,
+        columns: table.columns
+          .filter((column: any) => !column.is_hidden)
+          .map((column: any) => ({
+            slug: column.slug,
+            data_type: column.data_type,
+            is_nullable: column.is_nullable,
+            is_readonly: column.is_readonly,
+          })),
+      })),
+    };
+  }
+
+  async listRows(appRef: string, tableRef: string, actor: any, query: Record<string, unknown>) {
+    const { app, table, columns } = await this.resolveDataRequest(appRef, tableRef, actor, 'read');
+    const selectedColumns = this.resolveSelectedColumns(columns, query?.select);
+    const limit = this.normalizeLimit(query?.limit);
+    const order = this.resolveOrder(columns, query?.order, table.primary_key);
+    const filters = this.resolveFilters(columns, query);
+    const whereParts = [...filters.sql];
+    const params = [...filters.params];
+    if (table.soft_delete_column && columns.some((column) => column.slug === table.soft_delete_column)) {
+      whereParts.push(`${this.q(table.soft_delete_column)} IS NULL`);
+    }
+    const sql = [
+      `SELECT ${selectedColumns.map((column) => this.q(column.physical_column_name)).join(', ')}`,
+      `FROM ${this.q(table.physical_table_name)}`,
+      whereParts.length ? `WHERE ${whereParts.join(' AND ')}` : '',
+      `ORDER BY ${this.q(order.column.physical_column_name)} ${order.direction}`,
+      `LIMIT $${params.length + 1}`,
+    ].filter(Boolean).join(' ');
+    const rows = await (this.prisma.$queryRawUnsafe(sql, ...params, limit + 1) as Promise<Record<string, unknown>[]>);
+    const truncated = rows.length > limit;
+    return {
+      ok: true,
+      app: this.serializeApp(app),
+      table: this.serializeTableRef(table),
+      rows: rows.slice(0, limit),
+      row_count: Math.min(rows.length, limit),
+      truncated,
+      limit,
+    };
+  }
+
+  async getRow(appRef: string, tableRef: string, id: string, actor: any, query: Record<string, unknown>) {
+    const { app, table, columns } = await this.resolveDataRequest(appRef, tableRef, actor, 'read');
+    const selectedColumns = this.resolveSelectedColumns(columns, query?.select);
+    const whereParts = [`${this.q(table.primary_key)} = $1`];
+    if (table.soft_delete_column && columns.some((column) => column.slug === table.soft_delete_column)) {
+      whereParts.push(`${this.q(table.soft_delete_column)} IS NULL`);
+    }
+    const rows = await (this.prisma.$queryRawUnsafe(
+      `SELECT ${selectedColumns.map((column) => this.q(column.physical_column_name)).join(', ')}
+         FROM ${this.q(table.physical_table_name)}
+        WHERE ${whereParts.join(' AND ')}
+        LIMIT 1`,
+      id,
+    ) as Promise<Record<string, unknown>[]>);
+    const row = rows[0];
+    if (!row) {
+      throw new NotFoundException('Data row not found');
+    }
+    return {
+      ok: true,
+      app: this.serializeApp(app),
+      table: this.serializeTableRef(table),
+      row,
+    };
+  }
+
+  async createRow(appRef: string, tableRef: string, actor: any, body: Record<string, unknown>) {
+    const { app, table, columns } = await this.resolveDataRequest(appRef, tableRef, actor, 'write');
+    const writable = columns.filter((column) => !column.is_readonly && !['id', 'created_at', 'updated_at', table.soft_delete_column || ''].includes(column.slug));
+    const payload = this.pickWritablePayload(writable, body || {});
+    const insertColumns = Object.keys(payload);
+    const values = Object.values(payload);
+    const returning = this.visibleColumns(columns);
+    const rows = await (this.prisma.$queryRawUnsafe(
+      `
+        INSERT INTO ${this.q(table.physical_table_name)} (${insertColumns.map((column) => this.q(column)).join(', ')})
+        VALUES (${insertColumns.map((_, index) => `$${index + 1}`).join(', ')})
+        RETURNING ${returning.map((column) => this.q(column.physical_column_name)).join(', ')}
+      `,
+      ...values,
+    ) as Promise<Record<string, unknown>[]>);
+    await this.recordDataEvent(app.id, actor, table.id, 'data.row.created', rows[0]?.[table.primary_key]);
+    return {
+      ok: true,
+      app: this.serializeApp(app),
+      table: this.serializeTableRef(table),
+      row: rows[0],
+    };
+  }
+
+  async updateRow(appRef: string, tableRef: string, id: string, actor: any, body: Record<string, unknown>) {
+    const { app, table, columns } = await this.resolveDataRequest(appRef, tableRef, actor, 'write');
+    const writable = columns.filter((column) => !column.is_readonly && !['id', 'created_at', 'updated_at', table.soft_delete_column || ''].includes(column.slug));
+    const payload = this.pickWritablePayload(writable, body || {});
+    if (columns.some((column) => column.slug === 'updated_at')) {
+      payload.updated_at = new Date();
+    }
+    const setColumns = Object.keys(payload);
+    if (!setColumns.length) {
+      throw new BadRequestException('No writable fields provided');
+    }
+    const values = Object.values(payload);
+    const returning = this.visibleColumns(columns);
+    const whereParts = [`${this.q(table.primary_key)} = $${values.length + 1}`];
+    if (table.soft_delete_column && columns.some((column) => column.slug === table.soft_delete_column)) {
+      whereParts.push(`${this.q(table.soft_delete_column)} IS NULL`);
+    }
+    const rows = await (this.prisma.$queryRawUnsafe(
+      `
+        UPDATE ${this.q(table.physical_table_name)}
+           SET ${setColumns.map((column, index) => `${this.q(column)} = $${index + 1}`).join(', ')}
+         WHERE ${whereParts.join(' AND ')}
+        RETURNING ${returning.map((column) => this.q(column.physical_column_name)).join(', ')}
+      `,
+      ...values,
+      id,
+    ) as Promise<Record<string, unknown>[]>);
+    const row = rows[0];
+    if (!row) {
+      throw new NotFoundException('Data row not found');
+    }
+    await this.recordDataEvent(app.id, actor, table.id, 'data.row.updated', row[table.primary_key]);
+    return {
+      ok: true,
+      app: this.serializeApp(app),
+      table: this.serializeTableRef(table),
+      row,
+    };
+  }
+
+  async deleteRow(appRef: string, tableRef: string, id: string, actor: any) {
+    const { app, table, columns } = await this.resolveDataRequest(appRef, tableRef, actor, 'write');
+    const hasSoftDelete = !!table.soft_delete_column && columns.some((column) => column.slug === table.soft_delete_column);
+    const returning = this.visibleColumns(columns);
+    const rows = await (this.prisma.$queryRawUnsafe(
+      hasSoftDelete
+        ? `
+            UPDATE ${this.q(table.physical_table_name)}
+               SET ${this.q(table.soft_delete_column!)} = now()
+             WHERE ${this.q(table.primary_key)} = $1
+               AND ${this.q(table.soft_delete_column!)} IS NULL
+            RETURNING ${returning.map((column) => this.q(column.physical_column_name)).join(', ')}
+          `
+        : `
+            DELETE FROM ${this.q(table.physical_table_name)}
+             WHERE ${this.q(table.primary_key)} = $1
+            RETURNING ${returning.map((column) => this.q(column.physical_column_name)).join(', ')}
+          `,
+      id,
+    ) as Promise<Record<string, unknown>[]>);
+    const row = rows[0];
+    if (!row) {
+      throw new NotFoundException('Data row not found');
+    }
+    await this.recordDataEvent(app.id, actor, table.id, 'data.row.deleted', row[table.primary_key]);
+    return {
+      ok: true,
+      app: this.serializeApp(app),
+      table: this.serializeTableRef(table),
+      deleted: true,
+      soft_deleted: hasSoftDelete,
+      row,
+    };
+  }
+
   async resolveApp(appRef: string): Promise<AppSchemaApp> {
     const normalized = String(appRef || '').trim();
     if (!normalized) {
@@ -467,6 +649,47 @@ export class AppSchemaService {
     ) as Promise<AppDataColumnRow[]>;
   }
 
+  private async resolveDataRequest(appRef: string, tableRef: string, actor: any, mode: 'read' | 'write') {
+    const { app } = await this.assertDataAccess(appRef, actor, mode);
+    const table = await this.resolveTable(app.id, tableRef);
+    const columns = await this.listColumnsForTable(app.id, table.id);
+    return { app, table, columns };
+  }
+
+  private async assertDataAccess(appRef: string, actor: any, mode: 'read' | 'write') {
+    const app = await this.resolveApp(appRef || actor?.appSlug);
+    if (actor?.appSlug && actor.appSlug !== app.slug) {
+      throw new ForbiddenException('Actor does not belong to this app');
+    }
+    if (actor?.authMode === 'developer_grant') {
+      this.developerAuthorizationService.assertActorScope(actor, mode === 'read' ? 'database:data:read' : 'database:data:write');
+      return { app };
+    }
+    if (actor?.authMode === 'api_key') {
+      return { app };
+    }
+    if (String(actor?.role || '').toUpperCase() === 'ADMIN') {
+      return { app };
+    }
+    throw new ForbiddenException('Data API access requires app admin, app API key, or developer grant');
+  }
+
+  private async listColumnsForTable(appId: string, tableId: string) {
+    return this.prisma.$queryRawUnsafe(
+      `
+        SELECT id, table_id, slug, physical_column_name, data_type, is_nullable, default_value_json,
+               is_unique, is_indexed, is_hidden, is_readonly, validation_json, display_json,
+               ordinal_position, created_at, updated_at
+        FROM app_data_columns
+        WHERE app_id = $1::uuid
+          AND table_id = $2::uuid
+        ORDER BY ordinal_position ASC, created_at ASC
+      `,
+      appId,
+      tableId,
+    ) as Promise<AppDataColumnRow[]>;
+  }
+
   private async listIndexes(appId: string) {
     return this.prisma.$queryRawUnsafe(
       `
@@ -514,6 +737,102 @@ export class AppSchemaService {
       name: app.name,
       status: app.status,
     };
+  }
+
+  private serializeTableRef(table: AppDataTableRow) {
+    return {
+      id: table.id,
+      slug: table.slug,
+      physical_table_name: table.physical_table_name,
+      primary_key: table.primary_key,
+    };
+  }
+
+  private visibleColumns(columns: AppDataColumnRow[]) {
+    return columns.filter((column) => !column.is_hidden);
+  }
+
+  private resolveSelectedColumns(columns: AppDataColumnRow[], select: unknown) {
+    const visible = this.visibleColumns(columns);
+    const raw = String(select || '').trim();
+    if (!raw) {
+      return visible;
+    }
+    const bySlug = new Map(visible.map((column) => [column.slug, column]));
+    const selected = raw.split(',').map((item) => item.trim()).filter(Boolean).map((item) => bySlug.get(item));
+    if (selected.some((column) => !column)) {
+      throw new BadRequestException('select contains unknown or hidden field');
+    }
+    return selected as AppDataColumnRow[];
+  }
+
+  private normalizeLimit(value: unknown) {
+    const numeric = Number(value || 50);
+    if (!Number.isFinite(numeric) || numeric <= 0) {
+      throw new BadRequestException('limit must be a positive number');
+    }
+    return Math.min(Math.floor(numeric), 500);
+  }
+
+  private resolveOrder(columns: AppDataColumnRow[], value: unknown, primaryKey: string) {
+    const raw = String(value || `${primaryKey}.asc`).trim();
+    const [field, directionRaw] = raw.split('.');
+    const column = columns.find((item) => item.slug === field) || columns.find((item) => item.slug === primaryKey) || columns[0];
+    if (!column) {
+      throw new BadRequestException('No columns are registered for this table');
+    }
+    const direction = String(directionRaw || 'asc').toLowerCase() === 'desc' ? 'DESC' : 'ASC';
+    return { column, direction };
+  }
+
+  private resolveFilters(columns: AppDataColumnRow[], query: Record<string, unknown>) {
+    const bySlug = new Map(columns.map((column) => [column.slug, column]));
+    const sql: string[] = [];
+    const params: unknown[] = [];
+    for (const [key, value] of Object.entries(query || {})) {
+      if (!key.startsWith('filter.')) continue;
+      const field = key.slice('filter.'.length);
+      const column = bySlug.get(field);
+      if (!column || column.is_hidden) {
+        throw new BadRequestException(`Unknown filter field: ${field}`);
+      }
+      params.push(value);
+      sql.push(`${this.q(column.physical_column_name)} = $${params.length}`);
+    }
+    return { sql, params };
+  }
+
+  private pickWritablePayload(columns: AppDataColumnRow[], body: Record<string, unknown>) {
+    const allowed = new Map(columns.map((column) => [column.slug, column]));
+    const payload: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(body || {})) {
+      const column = allowed.get(key);
+      if (!column) {
+        throw new BadRequestException(`Unknown or readonly field: ${key}`);
+      }
+      payload[column.physical_column_name] = value;
+    }
+    if (!Object.keys(payload).length) {
+      throw new BadRequestException('No writable fields provided');
+    }
+    return payload;
+  }
+
+  private async recordDataEvent(appId: string, actor: any, tableId: string, action: string, rowId: unknown) {
+    await this.prisma.$executeRawUnsafe(
+      `
+        INSERT INTO app_schema_change_events (
+          app_id, actor_user_id, actor_api_key_id, resource_type, resource_id,
+          action, before_json, after_json, sql_hash
+        ) VALUES ($1::uuid, $2::uuid, $3::uuid, 'data_row', $4::uuid, $5, NULL, $6::jsonb, NULL)
+      `,
+      appId,
+      this.actorUserId(actor),
+      this.optionalUuid(actor?.apiKeyId),
+      tableId,
+      action,
+      JSON.stringify({ row_id: rowId ?? null }),
+    );
   }
 
   private normalizeCreateColumns(inputColumns: CreateAppDataColumnInput[], options: { ownerColumn: string | null; softDeleteColumn: string | null }) {
