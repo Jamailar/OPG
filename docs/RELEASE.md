@@ -105,6 +105,37 @@ ghcr.io/<owner>/opg-system-gateway:<version>
 ghcr.io/<owner>/opg-system-web:<version>
 ```
 
+每次 Docker tag 发布都必须同时完成 GitHub Release：
+
+1. 对应 tag 必须创建或更新为 GitHub latest release。
+2. Release notes 必须生成更新日志，至少覆盖本次 tag 相对上一版本的提交。
+3. Release assets 必须包含可离线导入的单镜像文件：`<image-name>-<version>.tar.gz`。
+4. 每个单镜像文件必须同时上传 `.sha256` 校验文件。
+
+GitHub Actions 会自动执行这些规则。`opg-system/vX.Y.Z` 会上传三个镜像归档，分别对应单容器、Gateway、Web；`opg-gateway/vX.Y.Z` 和 `opg-web/vX.Y.Z` 各上传一个镜像归档。
+
+如果 tag 已经存在但 Release 资产缺失，可以手动补跑 workflow：
+
+```bash
+gh workflow run docker-release.yml -f release_tag=opg-gateway/v1.0.119
+gh run watch
+gh release view opg-gateway/v1.0.119 --json isLatest,assets,url
+```
+
+下载单镜像文件后可以离线导入：
+
+```bash
+docker load -i opg-system-gateway-1.0.119.tar.gz
+docker run --rm -p 3000:3000 \
+  -e NODE_ENV=production \
+  -e PORT=3000 \
+  -e DATABASE_URL='postgresql://opg:password@postgres.example.com:5432/opg' \
+  -e REDIS_URL='redis://redis.example.com:6379/0' \
+  -e JWT_SECRET_KEY='replace-with-long-random-secret' \
+  -e PLATFORM_SECRETS_KEY='replace-with-long-random-secret' \
+  ghcr.io/<owner>/opg-system-gateway:1.0.119
+```
+
 首次公开发布后，需要在 GitHub Packages 把对应 package visibility 调成 public，否则外部用户无法匿名拉取。
 
 ## 用户 Docker 部署
