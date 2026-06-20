@@ -13,3 +13,7 @@
 - Do not promise automated Docker Hub per-repository avatar/logo updates; Docker Hub does not expose a stable normal repository avatar API. Use account/org branding or README imagery instead.
 - Use `.github/workflows/docker-release.yml` as the source of truth for Docker image publishing, release creation, latest promotion, and image archive assets.
 - If a tag was pushed before the Release or image archive assets were created, rerun the Docker Release workflow with `workflow_dispatch` for that existing tag.
+
+## CLI synchronization
+
+- Every feature change must explicitly check whether `packages/cli`, `packages/sdk`, MCP tool schemas, and `docs/CLI_USAGE.md` need matching updates. If the backend or web UI exposes a new product capability, the CLI and SDK surface must either support it or the commit/PR must state why no CLI/SDK change is required.
