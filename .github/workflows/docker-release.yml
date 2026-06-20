@@ -37,10 +37,7 @@ jobs:
 
           tag="${RELEASE_TAG}"
           owner="${GITHUB_REPOSITORY_OWNER,,}"
-          repo_name="${GITHUB_REPOSITORY#*/}"
-          repo_name="${repo_name,,}"
-          repo_name="${repo_name//_/-}"
-          image_base="ghcr.io/${owner}/${repo_name}"
+          image_base="ghcr.io/${owner}/opg-system"
 
           case "${tag}" in
             opg-system/v*)
