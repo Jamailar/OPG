@@ -23,7 +23,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.1",
-    "opg-sdk": "0.2.5",
+    "opg-sdk": "0.2.6",
     "zod": "^3.25.76"
   },
   "devDependencies": {
