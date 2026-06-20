@@ -98,8 +98,14 @@ const aiLogs = await platform.apps.aiUsage.logs(appId, { days: 7 });
 const orders = await platform.apps.payments.orders(appId, { page: 1 });
 ```
 
-Available app data namespaces include `feedbacks`, `analytics`, `aiUsage`,
-`payments`, `email`, `site`, `redeem`, and `admins`.
+Available app data namespaces include `agents`, `feedbacks`, `analytics`,
+`aiUsage`, `payments`, `email`, `site`, `redeem`, `admins`, `schema`,
+`functions`, `workflows`, `blocks`, and `build`.
+
+Platform-wide namespaces include `observability`, `tasks`,
+`developerAuthorizations`, `storageProviders`, `smtpProviders`,
+`integrationApiKeys`, `payments`, `sms`, `oauth`, `email`, `proxies`, `ai`,
+and `agents`.
 
 ## Database Workspace
 

@@ -42,6 +42,8 @@ export type OpgVideoTaskInput = {
   [key: string]: unknown;
 };
 
+export type OpgMultipartInput = FormData | Record<string, unknown>;
+
 export type OpgDatabaseQueryInput = {
   sql: string;
   params?: unknown[];
@@ -134,6 +136,16 @@ export type OpgPlatformClient = {
       defaultModels(appId: string): Promise<Record<string, unknown>>;
       setDefaultModel(appId: string, capability: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
       deleteDefaultModel(appId: string, capability: string): Promise<Record<string, unknown>>;
+      defaultModelSlots(appId: string): Promise<Record<string, unknown>>;
+      setDefaultModelSlot(appId: string, slotKey: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+      deleteDefaultModelSlot(appId: string, slotKey: string): Promise<Record<string, unknown>>;
+      pointsSettings(appId: string): Promise<Record<string, unknown>>;
+      updatePointsSettings(appId: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+    };
+    agents: {
+      listBindings(appId: string): Promise<Record<string, unknown>>;
+      upsertBinding(appId: string, agentId: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+      deleteBinding(appId: string, agentId: string): Promise<Record<string, unknown>>;
     };
     feedbacks: {
       list(appId: string, query?: OpgQuery): Promise<Record<string, unknown>>;
@@ -178,6 +190,10 @@ export type OpgPlatformClient = {
       campaignRecipients(appId: string, campaignId: string, query?: OpgQuery): Promise<Record<string, unknown>>;
     };
     site: {
+      config(appId: string): Promise<Record<string, unknown>>;
+      updateConfig(appId: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+      createDownloadUploadUrl(appId: string, platform: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+      confirmDownloadUpload(appId: string, platform: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
       messages(appId: string, query?: OpgQuery): Promise<Record<string, unknown>>;
       updateMessage(appId: string, messageId: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
       cookieConsents(appId: string, query?: OpgQuery): Promise<Record<string, unknown>>;
@@ -242,6 +258,32 @@ export type OpgPlatformClient = {
     get(): Promise<Record<string, unknown>>;
     update(input: Record<string, unknown>): Promise<Record<string, unknown>>;
   };
+  observability: {
+    runtime(): Promise<Record<string, unknown>>;
+    requestEvents(query?: OpgQuery): Promise<Record<string, unknown>>;
+    auditEvents(query?: OpgQuery): Promise<Record<string, unknown>>;
+    appRequestEvents(appId: string, query?: OpgQuery): Promise<Record<string, unknown>>;
+    appAuditEvents(appId: string, query?: OpgQuery): Promise<Record<string, unknown>>;
+  };
+  tasks: {
+    runtime(): Promise<Record<string, unknown>>;
+    list(query?: OpgQuery): Promise<Record<string, unknown>>;
+    get(taskId: string): Promise<Record<string, unknown>>;
+    listForApp(appId: string, query?: OpgQuery): Promise<Record<string, unknown>>;
+    getForApp(appId: string, taskId: string): Promise<Record<string, unknown>>;
+    create(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+    transition(taskId: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+    addEvent(taskId: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+    addLog(taskId: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+    cancel(taskId: string): Promise<Record<string, unknown>>;
+    workerHeartbeat(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+  };
+  developerAuthorizations: {
+    scopes(): Promise<Record<string, unknown>>;
+    grants(query?: OpgQuery): Promise<Record<string, unknown>>;
+    updateGrant(grantId: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+    revokeGrant(grantId: string): Promise<Record<string, unknown>>;
+  };
   storageProviders: OpgCrudClient;
   smtpProviders: OpgCrudClient;
   integrationApiKeys: {
@@ -265,6 +307,8 @@ export type OpgPlatformClient = {
     appleCredentials: OpgCrudClient;
   };
   email: {
+    providerCatalog(): Promise<Record<string, unknown>>;
+    providers: OpgCrudClient;
     cloudflareAccounts: OpgCrudClient & {
       verifyToken(input: Record<string, unknown>): Promise<Record<string, unknown>>;
       sendingDomains(accountId: string): Promise<Record<string, unknown>>;
@@ -295,6 +339,19 @@ export type OpgPlatformClient = {
     usageBreakdown(query?: OpgQuery): Promise<Record<string, unknown>>;
     usageLogs(query?: OpgQuery): Promise<Record<string, unknown>>;
   };
+  agents: {
+    list(): Promise<Record<string, unknown>>;
+    get(agentId: string): Promise<Record<string, unknown>>;
+    create(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+    update(agentId: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+    publish(agentId: string): Promise<Record<string, unknown>>;
+    archive(agentId: string): Promise<Record<string, unknown>>;
+    delete(agentId: string): Promise<Record<string, unknown>>;
+    test(agentId: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+    tools(): Promise<Record<string, unknown>>;
+    runs(query?: OpgQuery): Promise<Record<string, unknown>>;
+    run(runId: string): Promise<Record<string, unknown>>;
+  };
 };
 
 export type OpgClient = OpgClientInternals & {
@@ -307,13 +364,21 @@ export type OpgClient = OpgClientInternals & {
   };
   ai: {
     models(): Promise<Record<string, unknown>>;
+    model(model: string): Promise<Record<string, unknown>>;
+    defaultModels(): Promise<Record<string, unknown>>;
     pricing(refresh?: boolean): Promise<Record<string, unknown>>;
+    completions(input: Record<string, unknown>): Promise<Record<string, unknown>>;
     chat(input: Record<string, unknown>): Promise<Record<string, unknown>>;
     responses(input: Record<string, unknown>): Promise<Record<string, unknown>>;
     streamResponses(input: Record<string, unknown>): AsyncIterable<string>;
     embeddings(input: Record<string, unknown>): Promise<Record<string, unknown>>;
     image(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+    imageEdits(input: OpgMultipartInput): Promise<Record<string, unknown>>;
+    imageEdit(input: OpgMultipartInput): Promise<Record<string, unknown>>;
+    imageVariations(input: OpgMultipartInput): Promise<Record<string, unknown>>;
     speech(input: Record<string, unknown>): Promise<ArrayBuffer>;
+    transcriptions(input: OpgMultipartInput): Promise<Record<string, unknown>>;
+    translations(input: OpgMultipartInput): Promise<Record<string, unknown>>;
   };
   agents: {
     list(): Promise<Record<string, unknown>>;
@@ -323,6 +388,9 @@ export type OpgClient = OpgClientInternals & {
   };
   upload: {
     presignedUrl(input: Record<string, unknown>): Promise<Record<string, unknown>>;
+    audio(file: Blob, fields?: Record<string, string>): Promise<Record<string, unknown>>;
+    image(file: Blob, fields?: Record<string, string>): Promise<Record<string, unknown>>;
+    file(file: Blob, fields?: Record<string, string>): Promise<Record<string, unknown>>;
     imageBuffer(file: Blob, fields?: Record<string, string>): Promise<Record<string, unknown>>;
     fileBuffer(file: Blob, fields?: Record<string, string>): Promise<Record<string, unknown>>;
   };
@@ -480,13 +548,21 @@ export function createOpgClient(options: OpgClientOptions): OpgClient {
     },
     ai: {
       models: () => request('/models'),
+      model: (model) => request(`/models/${encodeURIComponent(model)}`),
+      defaultModels: () => request('/default-models'),
       pricing: (refresh) => request('/models/pricing', { query: { refresh: refresh ? '1' : undefined } }),
+      completions: (input) => request('/completions', { method: 'POST', body: input }),
       chat: (input) => request('/chat/completions', { method: 'POST', body: input }),
       responses: (input) => request('/responses', { method: 'POST', body: input }),
       streamResponses: (input) => stream('/responses', { method: 'POST', body: { ...input, stream: true } }),
       embeddings: (input) => request('/embeddings', { method: 'POST', body: input }),
       image: (input) => request('/images/generations', { method: 'POST', body: input }),
+      imageEdits: (input) => request('/images/edits', { method: 'POST', body: input }),
+      imageEdit: (input) => request('/images/edit', { method: 'POST', body: input }),
+      imageVariations: (input) => request('/images/variations', { method: 'POST', body: input }),
       speech: (input) => request('/audio/speech', { method: 'POST', body: input }),
+      transcriptions: (input) => request('/audio/transcriptions', { method: 'POST', body: input }),
+      translations: (input) => request('/audio/translations', { method: 'POST', body: input }),
     },
     agents: {
       list: () => request('/agent'),
@@ -496,6 +572,9 @@ export function createOpgClient(options: OpgClientOptions): OpgClient {
     },
     upload: {
       presignedUrl: (input) => request('/upload/presigned-url', { method: 'POST', body: input }),
+      audio: (file, fields) => uploadBlob(request, '/upload/audio', file, fields),
+      image: (file, fields) => uploadBlob(request, '/upload/image', file, fields),
+      file: (file, fields) => uploadBlob(request, '/upload/file', file, fields),
       imageBuffer: (file, fields) => uploadBlob(request, '/upload/image-buffer', file, fields),
       fileBuffer: (file, fields) => uploadBlob(request, '/upload/file-buffer', file, fields),
     },
@@ -597,6 +676,20 @@ export function createOpgPlatformClient(options: OpgClientOptions): OpgPlatformC
           request(appPath(appId, `/ai/default-models/${encodeURIComponent(capability)}`), { method: 'PUT', body: input }),
         deleteDefaultModel: (appId, capability) =>
           request(appPath(appId, `/ai/default-models/${encodeURIComponent(capability)}`), { method: 'DELETE' }),
+        defaultModelSlots: (appId) => request(appPath(appId, '/ai/default-model-slots')),
+        setDefaultModelSlot: (appId, slotKey, input) =>
+          request(appPath(appId, `/ai/default-model-slots/${encodeURIComponent(slotKey)}`), { method: 'PUT', body: input }),
+        deleteDefaultModelSlot: (appId, slotKey) =>
+          request(appPath(appId, `/ai/default-model-slots/${encodeURIComponent(slotKey)}`), { method: 'DELETE' }),
+        pointsSettings: (appId) => request(appPath(appId, '/ai/points-settings')),
+        updatePointsSettings: (appId, input) => request(appPath(appId, '/ai/points-settings'), { method: 'PUT', body: input }),
+      },
+      agents: {
+        listBindings: (appId) => request(appPath(appId, '/agents')),
+        upsertBinding: (appId, agentId, input) =>
+          request(appPath(appId, `/agents/${encodeURIComponent(agentId)}/binding`), { method: 'PUT', body: input }),
+        deleteBinding: (appId, agentId) =>
+          request(appPath(appId, `/agents/${encodeURIComponent(agentId)}/binding`), { method: 'DELETE' }),
       },
       feedbacks: {
         list: (appId, query) => request(appPath(appId, '/feedbacks'), { query }),
@@ -650,6 +743,12 @@ export function createOpgPlatformClient(options: OpgClientOptions): OpgPlatformC
           request(appPath(appId, `/email/campaigns/${encodeURIComponent(campaignId)}/recipients`), { query }),
       },
       site: {
+        config: (appId) => request(appPath(appId, '/site')),
+        updateConfig: (appId, input) => request(appPath(appId, '/site'), { method: 'PUT', body: input }),
+        createDownloadUploadUrl: (appId, platform, input) =>
+          request(appPath(appId, `/site/downloads/${encodeURIComponent(platform)}/upload-url`), { method: 'POST', body: input }),
+        confirmDownloadUpload: (appId, platform, input) =>
+          request(appPath(appId, `/site/downloads/${encodeURIComponent(platform)}/confirm-upload`), { method: 'POST', body: input }),
         messages: (appId, query) => request(appPath(appId, '/site/messages'), { query }),
         updateMessage: (appId, messageId, input) =>
           request(appPath(appId, `/site/messages/${encodeURIComponent(messageId)}`), { method: 'PATCH', body: input }),
@@ -725,6 +824,34 @@ export function createOpgPlatformClient(options: OpgClientOptions): OpgPlatformC
       get: () => request('/runtime-settings'),
       update: (input) => request('/runtime-settings', { method: 'PATCH', body: input }),
     },
+    observability: {
+      runtime: () => request('/observability/runtime'),
+      requestEvents: (query) => request('/observability/request-events', { query }),
+      auditEvents: (query) => request('/observability/audit-events', { query }),
+      appRequestEvents: (appId, query) => request(appPath(appId, '/observability/request-events'), { query }),
+      appAuditEvents: (appId, query) => request(appPath(appId, '/observability/audit-events'), { query }),
+    },
+    tasks: {
+      runtime: () => request('/tasks/runtime'),
+      list: (query) => request('/tasks', { query }),
+      get: (taskId) => request(`/tasks/${encodeURIComponent(taskId)}`),
+      listForApp: (appId, query) => request(appPath(appId, '/tasks'), { query }),
+      getForApp: (appId, taskId) => request(appPath(appId, `/tasks/${encodeURIComponent(taskId)}`)),
+      create: (input) => request('/tasks', { method: 'POST', body: input }),
+      transition: (taskId, input) => request(`/tasks/${encodeURIComponent(taskId)}/transition`, { method: 'POST', body: input }),
+      addEvent: (taskId, input) => request(`/tasks/${encodeURIComponent(taskId)}/events`, { method: 'POST', body: input }),
+      addLog: (taskId, input) => request(`/tasks/${encodeURIComponent(taskId)}/logs`, { method: 'POST', body: input }),
+      cancel: (taskId) => request(`/tasks/${encodeURIComponent(taskId)}/cancel`, { method: 'POST', body: {} }),
+      workerHeartbeat: (input) => request('/tasks/workers/heartbeat', { method: 'POST', body: input }),
+    },
+    developerAuthorizations: {
+      scopes: () => request('/developer-authorizations/scopes'),
+      grants: (query) => request('/developer-authorizations/grants', { query }),
+      updateGrant: (grantId, input) =>
+        request(`/developer-authorizations/grants/${encodeURIComponent(grantId)}`, { method: 'PATCH', body: input }),
+      revokeGrant: (grantId) =>
+        request(`/developer-authorizations/grants/${encodeURIComponent(grantId)}/revoke`, { method: 'POST', body: {} }),
+    },
     storageProviders: crud('/storage/providers', { updateMethod: 'PATCH' }),
     smtpProviders: crud('/smtp/providers', { updateMethod: 'PATCH' }),
     integrationApiKeys: {
@@ -748,6 +875,8 @@ export function createOpgPlatformClient(options: OpgClientOptions): OpgPlatformC
       appleCredentials: crud('/apple/login-credentials'),
     },
     email: {
+      providerCatalog: () => request('/email/providers/catalog'),
+      providers: crud('/email/providers', { updateMethod: 'PATCH' }),
       cloudflareAccounts: {
         ...crud('/email/cloudflare/accounts', { updateMethod: 'PATCH' }),
         verifyToken: (input) => request('/email/cloudflare/accounts/verify-token', { method: 'POST', body: input }),
@@ -784,6 +913,19 @@ export function createOpgPlatformClient(options: OpgClientOptions): OpgPlatformC
       usageSummary: (query) => request('/ai/usage/summary', { query }),
       usageBreakdown: (query) => request('/ai/usage/breakdown', { query }),
       usageLogs: (query) => request('/ai/usage/logs', { query }),
+    },
+    agents: {
+      list: () => request('/agents'),
+      get: (agentId) => request(`/agents/${encodeURIComponent(agentId)}`),
+      create: (input) => request('/agents', { method: 'POST', body: input }),
+      update: (agentId, input) => request(`/agents/${encodeURIComponent(agentId)}`, { method: 'PUT', body: input }),
+      publish: (agentId) => request(`/agents/${encodeURIComponent(agentId)}/publish`, { method: 'POST', body: {} }),
+      archive: (agentId) => request(`/agents/${encodeURIComponent(agentId)}/archive`, { method: 'POST', body: {} }),
+      delete: (agentId) => request(`/agents/${encodeURIComponent(agentId)}`, { method: 'DELETE' }),
+      test: (agentId, input) => request(`/agents/${encodeURIComponent(agentId)}/test`, { method: 'POST', body: input }),
+      tools: () => request('/agent-tools'),
+      runs: (query) => request('/agent-runs', { query }),
+      run: (runId) => request(`/agent-runs/${encodeURIComponent(runId)}`),
     },
   };
 }
@@ -931,7 +1073,13 @@ async function uploadBlob(
 ): Promise<Record<string, unknown>> {
   const form = new FormData();
   Object.entries(fields).forEach(([key, value]) => form.set(key, value));
-  form.set('file', file);
+  const fileLike = file as Blob & { name?: unknown };
+  const filename = typeof fileLike.name === 'string' ? fileLike.name : undefined;
+  if (filename) {
+    form.set('file', file, filename);
+  } else {
+    form.set('file', file);
+  }
   return request<Record<string, unknown>>(path, { method: 'POST', body: form });
 }
 
