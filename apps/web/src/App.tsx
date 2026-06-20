@@ -25,6 +25,7 @@ import PlatformStorageSettingsPage from '@/pages/platform/PlatformStorageSetting
 import PlatformObservabilityPage from '@/pages/platform/PlatformObservabilityPage';
 import DeveloperAuthorizationsPage from '@/pages/platform/DeveloperAuthorizationsPage';
 import PlatformJobsPage from '@/pages/platform/PlatformJobsPage';
+import PlatformRuntimePage from '@/pages/platform/PlatformRuntimePage';
 import PlatformLayout from '@/components/PlatformLayout';
 import { applyRuntimeContext, runtimeContext } from '@/lib/runtime-context';
 import '@/styles/globals.css';
@@ -241,6 +242,15 @@ function App() {
             element={
               <PlatformProtectedRoute>
                 <PlatformStorageSettingsPage />
+              </PlatformProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/platform-admin/runtime"
+            element={
+              <PlatformProtectedRoute>
+                <PlatformRuntimePage />
               </PlatformProtectedRoute>
             }
           />

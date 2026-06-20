@@ -13,6 +13,7 @@ interface PlatformLayoutProps {
 type PlatformNavIconKey =
   | 'dashboard'
   | 'apps'
+  | 'runtime'
   | 'jobs'
   | 'login'
   | 'proxy'
@@ -42,6 +43,20 @@ const navItems = [
     label: '租户应用',
     desc: '画廊视图与租户工作区',
     path: '/platform-admin/apps',
+  },
+  {
+    key: 'runtime',
+    icon: 'runtime',
+    label: 'Runtime',
+    desc: '模块、模板与 Registry',
+    path: '/platform-admin/runtime',
+  },
+  {
+    key: 'jobs',
+    icon: 'jobs',
+    label: 'Jobs',
+    desc: '后台任务与 Worker',
+    path: '/platform-admin/jobs',
   },
   {
     key: 'login-credentials',
@@ -110,6 +125,7 @@ const navItems = [
 const platformNavIconPaths: Record<PlatformNavIconKey, string[]> = {
   dashboard: ['M4 5.5A1.5 1.5 0 0 1 5.5 4h4A1.5 1.5 0 0 1 11 5.5v4A1.5 1.5 0 0 1 9.5 11h-4A1.5 1.5 0 0 1 4 9.5v-4ZM13 5.5A1.5 1.5 0 0 1 14.5 4h4A1.5 1.5 0 0 1 20 5.5v4a1.5 1.5 0 0 1-1.5 1.5h-4A1.5 1.5 0 0 1 13 9.5v-4ZM4 14.5A1.5 1.5 0 0 1 5.5 13h4a1.5 1.5 0 0 1 1.5 1.5v4A1.5 1.5 0 0 1 9.5 20h-4A1.5 1.5 0 0 1 4 18.5v-4ZM13 14.5a1.5 1.5 0 0 1 1.5-1.5h4a1.5 1.5 0 0 1 1.5 1.5v4a1.5 1.5 0 0 1-1.5 1.5h-4a1.5 1.5 0 0 1-1.5-1.5v-4Z'],
   apps: ['M12 4 4 8l8 4 8-4-8-4Z', 'M4 12l8 4 8-4', 'M4 16l8 4 8-4'],
+  runtime: ['M5 5h14v5H5V5Z', 'M5 14h14v5H5v-5Z', 'M8 7.5h.01M8 16.5h.01M11 7.5h5M11 16.5h5'],
   jobs: ['M7 6h10', 'M7 12h10', 'M7 18h10', 'M4 6h.01', 'M4 12h.01', 'M4 18h.01'],
   login: ['M15 7.5V6a3 3 0 0 0-6 0v1.5', 'M7 10h10a1.5 1.5 0 0 1 1.5 1.5v6A1.5 1.5 0 0 1 17 19H7a1.5 1.5 0 0 1-1.5-1.5v-6A1.5 1.5 0 0 1 7 10Z', 'M12 14v2'],
   proxy: ['M8 8h8a4 4 0 0 1 0 8h-2', 'M16 16H8a4 4 0 0 1 0-8h2', 'M9 12h6'],

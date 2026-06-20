@@ -2101,6 +2101,70 @@ export interface PlatformTaskRuntime {
   } | null;
 }
 
+export interface PlatformRuntimeTemplate {
+  key: string;
+  version: string;
+  name: string;
+  category: string;
+  summary?: string;
+  modules: string[];
+  creates?: {
+    ai_blocks?: number;
+    video_blocks?: number;
+    functions?: number;
+    workflows?: number;
+    storage_buckets?: number;
+  };
+}
+
+export interface PlatformRuntimeModule {
+  id?: string;
+  app_id: string;
+  module_key: string;
+  display_name: string;
+  category: string;
+  status: 'active' | 'warning' | 'unhealthy' | 'disabled' | string;
+  source?: string;
+  resource_count?: number | string;
+  run_count_24h?: number | string;
+  failure_count_24h?: number | string;
+  quality_score?: number | string;
+  runtime_config_json?: Record<string, unknown>;
+  health_json?: Record<string, unknown>;
+  last_run_at?: string | null;
+  last_failure_at?: string | null;
+  updated_at?: string;
+}
+
+export interface PlatformRuntimeOverview {
+  apps?: { total?: number | string; active?: number | string };
+  modules?: {
+    by_status?: Array<{ status: string; count: number | string }>;
+    by_category?: Array<{
+      category: string;
+      module_count: number | string;
+      avg_quality_score?: number | string;
+      failures_24h?: number | string;
+    }>;
+  };
+  task_runtime?: PlatformTaskRuntime | null;
+  templates?: {
+    available?: number;
+    recent_applications?: Array<Record<string, unknown>>;
+  };
+  next_actions?: Array<Record<string, unknown>>;
+}
+
+export interface PlatformAppRuntimeOverview {
+  app: { id: string; slug: string; name?: string | null; status?: string | null };
+  modules: PlatformRuntimeModule[];
+  runs: Array<Record<string, unknown>>;
+  tasks: PlatformTaskItem[];
+  templates: Array<Record<string, unknown>>;
+  available_templates: PlatformRuntimeTemplate[];
+  next_actions?: Array<Record<string, unknown>>;
+}
+
 export interface PlatformAiModelConnectivityTestResult {
   ok: boolean;
   status_code: number | null;
@@ -3869,6 +3933,36 @@ export const platformApi = {
   listAppAuditEvents: async (appId: string, params?: Omit<PlatformObservabilityEventsQuery, 'app_id'>) => {
     const response = await apiClient.getClient().get(`/platform-admin/apps/${appId}/observability/audit-events`, { params });
     return response.data;
+  },
+
+  getPlatformRuntimeOverview: async (params?: { limit?: number | string }): Promise<PlatformRuntimeOverview> => {
+    const response = await apiClient.getClient().get('/platform-admin/runtime/overview', { params });
+    return response.data?.data || response.data;
+  },
+
+  refreshPlatformRuntime: async (): Promise<PlatformTaskDetail> => {
+    const response = await apiClient.getClient().post('/platform-admin/runtime/refresh');
+    return response.data?.data || response.data;
+  },
+
+  listRuntimeTemplates: async (): Promise<{ items: PlatformRuntimeTemplate[] }> => {
+    const response = await apiClient.getClient().get('/platform-admin/runtime/templates');
+    return response.data?.data || response.data;
+  },
+
+  getAppRuntimeOverview: async (appId: string, params?: { limit?: number | string }): Promise<PlatformAppRuntimeOverview> => {
+    const response = await apiClient.getClient().get(`/platform-admin/apps/${appId}/runtime/overview`, { params });
+    return response.data?.data || response.data;
+  },
+
+  refreshAppRuntime: async (appId: string): Promise<PlatformTaskDetail> => {
+    const response = await apiClient.getClient().post(`/platform-admin/apps/${appId}/runtime/refresh`);
+    return response.data?.data || response.data;
+  },
+
+  applyAppRuntimeTemplate: async (appId: string, templateKey: string): Promise<PlatformTaskDetail> => {
+    const response = await apiClient.getClient().post(`/platform-admin/apps/${appId}/runtime/templates/${templateKey}/apply`);
+    return response.data?.data || response.data;
   },
 
   getPlatformTaskRuntime: async (): Promise<PlatformTaskRuntime> => {
