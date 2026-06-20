@@ -40,12 +40,12 @@ export class PlatformTasksService implements OnModuleInit {
 
   async getRuntime() {
     const schemaReady = await this.ensureSchema();
-    return {
+    return this.serialize({
       schema_ready: schemaReady,
       queue: this.queueService.getStatus(),
       registered_handlers: this.listRegisteredHandlers(),
       summary: schemaReady ? await this.getSummary() : null,
-    };
+    });
   }
 
   registerHandler(module: string, action: string, handler: PlatformTaskHandler) {
@@ -175,7 +175,7 @@ export class PlatformTasksService implements OnModuleInit {
       paging.limit + 1,
       paging.offset,
     )) as Record<string, unknown>[];
-    return this.paginated(rows, paging);
+    return this.serialize(this.paginated(rows, paging));
   }
 
   async getTask(taskId: string, appId?: string | null) {
@@ -199,11 +199,11 @@ export class PlatformTasksService implements OnModuleInit {
         taskId,
       ) as Promise<Record<string, unknown>[]>,
     ]);
-    return {
+    return this.serialize({
       task,
       events: events.reverse(),
       logs: logs.reverse(),
-    };
+    });
   }
 
   async transitionTask(taskId: string, status: PlatformTaskStatus, input: TransitionPlatformTaskInput = {}, actorUserId?: string | null) {
@@ -568,7 +568,7 @@ export class PlatformTasksService implements OnModuleInit {
           LIMIT 30`,
       ) as Promise<Record<string, unknown>[]>,
     ]);
-    return { by_status: byStatus, by_module: byModule, recent_failures: recentFailures, workers };
+    return this.serialize({ by_status: byStatus, by_module: byModule, recent_failures: recentFailures, workers });
   }
 
   async ensureSchema(): Promise<boolean> {
@@ -665,6 +665,16 @@ export class PlatformTasksService implements OnModuleInit {
   private objectValue(value: unknown): Record<string, unknown> {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
     return value as Record<string, unknown>;
+  }
+
+  private serialize(value: unknown): any {
+    if (typeof value === 'bigint') return Number(value);
+    if (value instanceof Date) return value;
+    if (Array.isArray(value)) return value.map((item) => this.serialize(item));
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, this.serialize(item)]));
+    }
+    return value;
   }
 
   private normalizeLogStream(value: unknown) {
