@@ -71,3 +71,14 @@ export interface PlatformTaskQueueBackendStatus {
   redis_url_configured: boolean;
   last_error?: string | null;
 }
+
+export interface PlatformTaskHandlerContext {
+  task: Record<string, unknown>;
+  input: Record<string, unknown>;
+  worker_id: string;
+  appendLog(message: string, metadata?: Record<string, unknown>, stream?: PlatformTaskLogStream): Promise<void>;
+  appendEvent(event_type: string, payload?: Record<string, unknown>, stage?: string | null): Promise<void>;
+  setProgress(progress: number, outputSummary?: Record<string, unknown>): Promise<void>;
+}
+
+export type PlatformTaskHandler = (context: PlatformTaskHandlerContext) => Promise<Record<string, unknown> | void>;

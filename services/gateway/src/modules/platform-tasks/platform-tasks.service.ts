@@ -8,6 +8,8 @@ import {
   AppendPlatformTaskLogInput,
   CreatePlatformTaskInput,
   ListPlatformTasksInput,
+  PlatformTaskHandler,
+  PlatformTaskHandlerContext,
   PlatformTaskStatus,
   TransitionPlatformTaskInput,
 } from './platform-tasks.types';
@@ -20,6 +22,7 @@ export class PlatformTasksService implements OnModuleInit {
   private readonly logger = new Logger(PlatformTasksService.name);
   private schemaReady = false;
   private schemaPromise: Promise<boolean> | null = null;
+  private readonly handlers = new Map<string, PlatformTaskHandler>();
 
   constructor(
     @Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient,
@@ -40,8 +43,19 @@ export class PlatformTasksService implements OnModuleInit {
     return {
       schema_ready: schemaReady,
       queue: this.queueService.getStatus(),
+      registered_handlers: this.listRegisteredHandlers(),
       summary: schemaReady ? await this.getSummary() : null,
     };
+  }
+
+  registerHandler(module: string, action: string, handler: PlatformTaskHandler) {
+    const key = this.handlerKey(module, action);
+    this.handlers.set(key, handler);
+    this.logger.log(`registered platform task handler: ${key}`);
+  }
+
+  listRegisteredHandlers() {
+    return [...this.handlers.keys()].sort();
   }
 
   async createTask(input: CreatePlatformTaskInput, actorUserId?: string | null) {
@@ -250,6 +264,200 @@ export class PlatformTasksService implements OnModuleInit {
 
   async cancelTask(taskId: string, actorUserId?: string | null) {
     return this.transitionTask(taskId, 'cancelled', { error_code: 'CANCELLED_BY_OPERATOR' }, actorUserId);
+  }
+
+  async runTaskWorker(taskId: string, workerId = this.defaultWorkerId()) {
+    if (!(await this.ensureSchema())) throw new BadRequestException('platform task schema is not ready');
+    const claimed = await this.claimTaskById(taskId, workerId);
+    if (!claimed) {
+      await this.appendEvent(taskId, {
+        event_type: 'task.worker.skipped',
+        stage: 'skipped',
+        payload: { worker_id: workerId, reason: 'not runnable' },
+      }).catch(() => undefined);
+      return this.getTask(taskId);
+    }
+    return this.executeClaimedTask(claimed, workerId);
+  }
+
+  async claimAndRunNext(workerId = this.defaultWorkerId()) {
+    if (!(await this.ensureSchema())) return null;
+    const claimed = await this.claimNextRunnableTask(workerId);
+    if (!claimed) return null;
+    return this.executeClaimedTask(claimed, workerId);
+  }
+
+  private async claimTaskById(taskId: string, workerId: string) {
+    const rows = (await this.prisma.$queryRawUnsafe(
+      `UPDATE platform_tasks
+          SET status = 'running',
+              attempts = attempts + 1,
+              worker_id = $2,
+              locked_at = now(),
+              started_at = COALESCE(started_at, now()),
+              updated_at = now()
+        WHERE id = $1::uuid
+          AND status IN ('queued', 'retrying')
+          AND (next_retry_at IS NULL OR next_retry_at <= now())
+        RETURNING *`,
+      this.requiredUuid(taskId),
+      this.requiredText(workerId, 128, this.defaultWorkerId()),
+    )) as Record<string, unknown>[];
+    return rows[0] || null;
+  }
+
+  private async claimNextRunnableTask(workerId: string) {
+    const rows = (await this.prisma.$queryRawUnsafe(
+      `WITH picked AS (
+         SELECT id
+           FROM platform_tasks
+          WHERE status IN ('queued', 'retrying')
+            AND (next_retry_at IS NULL OR next_retry_at <= now())
+          ORDER BY priority DESC, created_at ASC
+          FOR UPDATE SKIP LOCKED
+          LIMIT 1
+       )
+       UPDATE platform_tasks
+          SET status = 'running',
+              attempts = attempts + 1,
+              worker_id = $1,
+              locked_at = now(),
+              started_at = COALESCE(started_at, now()),
+              updated_at = now()
+         FROM picked
+        WHERE platform_tasks.id = picked.id
+        RETURNING platform_tasks.*`,
+      this.requiredText(workerId, 128, this.defaultWorkerId()),
+    )) as Record<string, unknown>[];
+    return rows[0] || null;
+  }
+
+  private async executeClaimedTask(task: Record<string, unknown>, workerId: string) {
+    const taskId = String(task.id || '');
+    const module = String(task.module || '');
+    const action = String(task.action || '');
+    const handler = this.handlers.get(this.handlerKey(module, action));
+    const attempt = Number(task.attempts || 1);
+    const maxAttempts = Number(task.max_attempts || 1);
+
+    await this.appendEvent(taskId, {
+      event_type: 'task.running',
+      stage: 'running',
+      payload: { worker_id: workerId, attempt, handler: handler ? this.handlerKey(module, action) : null },
+    });
+
+    if (!handler) {
+      return this.finishTaskFailure(task, workerId, {
+        error_code: 'UNSUPPORTED_TASK_HANDLER',
+        error_message: `No platform task handler registered for ${module}.${action}`,
+        retryable: false,
+      });
+    }
+
+    const context: PlatformTaskHandlerContext = {
+      task,
+      input: this.objectValue(task.input_summary_json),
+      worker_id: workerId,
+      appendLog: async (message, metadata, stream = 'stdout') => {
+        await this.appendLog(taskId, { message, metadata, stream });
+      },
+      appendEvent: async (event_type, payload, stage) => {
+        await this.appendEvent(taskId, { event_type, payload, stage });
+      },
+      setProgress: async (progress, outputSummary) => {
+        await this.updateTaskProgress(taskId, progress, outputSummary);
+      },
+    };
+
+    try {
+      await context.appendLog(`handler ${module}.${action} started`, { attempt, worker_id: workerId }, 'system');
+      const result = await handler(context);
+      await context.setProgress(100, this.objectValue(result));
+      const rows = (await this.prisma.$queryRawUnsafe(
+        `UPDATE platform_tasks
+            SET status = 'succeeded',
+                progress = 100,
+                result_json = $2::jsonb,
+                output_summary_json = COALESCE($3::jsonb, output_summary_json),
+                error_code = NULL,
+                error_message = NULL,
+                locked_at = NULL,
+                finished_at = now(),
+                updated_at = now()
+          WHERE id = $1::uuid
+          RETURNING *`,
+        taskId,
+        JSON.stringify(this.objectValue(result)),
+        JSON.stringify(this.objectValue(result)),
+      )) as Record<string, unknown>[];
+      await this.appendEvent(taskId, {
+        event_type: 'task.succeeded',
+        stage: 'succeeded',
+        payload: { worker_id: workerId },
+      });
+      return this.getTask(taskId, typeof rows[0]?.app_id === 'string' ? String(rows[0].app_id) : undefined);
+    } catch (error: any) {
+      return this.finishTaskFailure(task, workerId, {
+        error_code: 'HANDLER_ERROR',
+        error_message: String(error?.message || error || 'handler failed').slice(0, 2000),
+        retryable: attempt < maxAttempts,
+      });
+    }
+  }
+
+  private async finishTaskFailure(
+    task: Record<string, unknown>,
+    workerId: string,
+    input: { error_code: string; error_message: string; retryable: boolean },
+  ) {
+    const taskId = String(task.id || '');
+    const attempt = Number(task.attempts || 1);
+    const maxAttempts = Number(task.max_attempts || 1);
+    const retryable = input.retryable && attempt < maxAttempts;
+    const status: PlatformTaskStatus = retryable ? 'retrying' : 'failed';
+    const nextRetrySeconds = retryable ? Math.min(300, 10 * Math.max(1, attempt) ** 2) : null;
+    const rows = (await this.prisma.$queryRawUnsafe(
+      `UPDATE platform_tasks
+          SET status = $2,
+              error_code = $3,
+              error_message = $4,
+              next_retry_at = CASE WHEN $5::int IS NULL THEN NULL ELSE now() + ($5::int * interval '1 second') END,
+              locked_at = NULL,
+              finished_at = CASE WHEN $2 = 'failed' THEN now() ELSE finished_at END,
+              updated_at = now()
+        WHERE id = $1::uuid
+        RETURNING *`,
+      taskId,
+      status,
+      input.error_code,
+      input.error_message,
+      nextRetrySeconds,
+    )) as Record<string, unknown>[];
+    await this.appendLog(taskId, {
+      stream: 'stderr',
+      message: input.error_message,
+      metadata: { worker_id: workerId, error_code: input.error_code, retryable, attempt, max_attempts: maxAttempts },
+    }).catch(() => undefined);
+    await this.appendEvent(taskId, {
+      event_type: retryable ? 'task.retrying' : 'task.failed',
+      stage: status,
+      payload: { worker_id: workerId, error_code: input.error_code, retryable, next_retry_seconds: nextRetrySeconds },
+    }).catch(() => undefined);
+    return this.getTask(taskId, typeof rows[0]?.app_id === 'string' ? String(rows[0].app_id) : undefined);
+  }
+
+  private async updateTaskProgress(taskId: string, progress: number, outputSummary?: Record<string, unknown>) {
+    const normalized = this.intValue(progress, 0, 0, 100) || 0;
+    await this.prisma.$executeRawUnsafe(
+      `UPDATE platform_tasks
+          SET progress = $2,
+              output_summary_json = COALESCE($3::jsonb, output_summary_json),
+              updated_at = now()
+        WHERE id = $1::uuid`,
+      this.requiredUuid(taskId),
+      normalized,
+      outputSummary ? JSON.stringify(this.objectValue(outputSummary)) : null,
+    );
   }
 
   async appendEvent(taskId: string, input: AppendPlatformTaskEventInput) {
@@ -462,6 +670,10 @@ export class PlatformTasksService implements OnModuleInit {
   private normalizeLogStream(value: unknown) {
     const stream = String(value || 'stdout').trim().toLowerCase();
     return ['stdout', 'stderr', 'system'].includes(stream) ? stream : 'stdout';
+  }
+
+  private handlerKey(module: unknown, action: unknown) {
+    return `${this.requiredText(module, 64, 'platform')}.${this.requiredText(action, 96, 'run')}`;
   }
 
   private redactMessage(value: unknown) {
