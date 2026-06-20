@@ -32,15 +32,12 @@ jobs:
         shell: bash
         env:
           RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name }}
-          DOCKERHUB_NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE }}
         run: |
           set -euo pipefail
 
           tag="${RELEASE_TAG}"
           owner="${GITHUB_REPOSITORY_OWNER,,}"
           image_base="ghcr.io/${owner}/opg-system"
-          dockerhub_namespace="${DOCKERHUB_NAMESPACE:-${owner}}"
-          dockerhub_image_base="docker.io/${dockerhub_namespace}/opg-system"
 
           case "${tag}" in
             opg-system/v*)
@@ -48,11 +45,10 @@ jobs:
               release_title="OPG System v${version}"
               matrix="$(jq -cn \
                 --arg image_base "${image_base}" \
-                --arg dockerhub_image_base "${dockerhub_image_base}" \
                 '{include:[
-                  {name:"opg-system", image:$image_base, dockerhub_image:$dockerhub_image_base, target:"opg-all"},
-                  {name:"opg-system-gateway", image:($image_base + "-gateway"), dockerhub_image:($dockerhub_image_base + "-gateway"), target:"gateway-runtime"},
-                  {name:"opg-system-web", image:($image_base + "-web"), dockerhub_image:($dockerhub_image_base + "-web"), target:"web-runtime"}
+                  {name:"opg-system", image:$image_base, target:"opg-all"},
+                  {name:"opg-system-gateway", image:($image_base + "-gateway"), target:"gateway-runtime"},
+                  {name:"opg-system-web", image:($image_base + "-web"), target:"web-runtime"}
                 ]}')"
               ;;
             opg-gateway/v*)
@@ -60,16 +56,14 @@ jobs:
               release_title="OPG Gateway v${version}"
               matrix="$(jq -cn \
                 --arg image_base "${image_base}" \
-                --arg dockerhub_image_base "${dockerhub_image_base}" \
-                '{include:[{name:"opg-system-gateway", image:($image_base + "-gateway"), dockerhub_image:($dockerhub_image_base + "-gateway"), target:"gateway-runtime"}]}')"
+                '{include:[{name:"opg-system-gateway", image:($image_base + "-gateway"), target:"gateway-runtime"}]}')"
               ;;
             opg-web/v*)
               version="${tag#opg-web/v}"
               release_title="OPG Web v${version}"
               matrix="$(jq -cn \
                 --arg image_base "${image_base}" \
-                --arg dockerhub_image_base "${dockerhub_image_base}" \
-                '{include:[{name:"opg-system-web", image:($image_base + "-web"), dockerhub_image:($dockerhub_image_base + "-web"), target:"web-runtime"}]}')"
+                '{include:[{name:"opg-system-web", image:($image_base + "-web"), target:"web-runtime"}]}')"
               ;;
             *)
               echo "Unsupported release tag: ${tag}" >&2
@@ -110,13 +104,14 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Log in to Docker Hub
+        if: ${{ matrix.name == 'opg-system' }}
         uses: docker/login-action@v3
         with:
           registry: docker.io
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push image
+      - name: Build and push GHCR image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -127,15 +122,30 @@ jobs:
             ${{ matrix.image }}:${{ needs.prepare.outputs.version }}
             ${{ matrix.image }}:latest
             ${{ matrix.image }}:${{ github.sha }}
-            ${{ matrix.dockerhub_image }}:${{ needs.prepare.outputs.version }}
-            ${{ matrix.dockerhub_image }}:latest
-            ${{ matrix.dockerhub_image }}:${{ github.sha }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Build and push Docker Hub image
+        if: ${{ matrix.name == 'opg-system' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          target: ${{ matrix.target }}
+          push: true
+          tags: |
+            docker.io/${{ vars.DOCKERHUB_NAMESPACE || secrets.DOCKERHUB_USERNAME }}/opg-system:${{ needs.prepare.outputs.version }}
+            docker.io/${{ vars.DOCKERHUB_NAMESPACE || secrets.DOCKERHUB_USERNAME }}/opg-system:latest
+            docker.io/${{ vars.DOCKERHUB_NAMESPACE || secrets.DOCKERHUB_USERNAME }}/opg-system:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
+          cache-from: type=gha
 
       - name: Export Docker image archive
         uses: docker/build-push-action@v6
