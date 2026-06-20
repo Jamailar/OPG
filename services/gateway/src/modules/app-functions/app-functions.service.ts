@@ -399,7 +399,7 @@ export class AppFunctionsService implements OnModuleInit, OnApplicationShutdown 
 
   private actorUserId(actor: any) {
     const userId = String(actor?.userId || actor?.id || '').trim();
-    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(userId) ? userId : null;
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(userId) ? userId : null;
   }
 
   private sha256(value: string) {
