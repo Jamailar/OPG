@@ -159,6 +159,12 @@ jobs:
       - prepare
       - build
     steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+          fetch-depth: 0
+
       - name: Download image archive artifacts
         uses: actions/download-artifact@v4
         with:
@@ -166,11 +172,69 @@ jobs:
           pattern: '*-image'
           merge-multiple: true
 
+      - name: Generate release notes
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_TITLE: ${{ needs.prepare.outputs.release_title }}
+        run: |
+          set -euo pipefail
+
+          module="${RELEASE_TAG%%/v*}"
+          prefix="${module}/v"
+          previous_tag="$(git tag --list "${prefix}*" --sort=-v:refname | grep -vx "${RELEASE_TAG}" | head -n 1 || true)"
+
+          if [[ -n "${previous_tag}" ]]; then
+            range="${previous_tag}..${RELEASE_TAG}"
+            compare_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/${previous_tag}...${RELEASE_TAG}"
+          else
+            range="${RELEASE_TAG}"
+            compare_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}"
+          fi
+
+          {
+            echo "# ${RELEASE_TITLE}"
+            echo
+            echo "## Changelog"
+            if [[ -n "${previous_tag}" ]]; then
+              echo
+              echo "Changes since \`${previous_tag}\`:"
+            fi
+            echo
+            git log --no-merges --pretty=format:'- %s (%h)' "${range}" \
+              | sed '/^- chore([^)]*): release /d' \
+              | sed '/^- chore(release): release /d' \
+              > /tmp/release-commits.md
+            if [[ -s /tmp/release-commits.md ]]; then
+              cat /tmp/release-commits.md
+            else
+              echo "- Release packaging and image publication."
+            fi
+            echo
+            echo
+            echo "## Images"
+            echo
+            find release-assets -maxdepth 1 -type f -name '*.tar.gz' -print | sort | while read -r archive; do
+              echo "- \`$(basename "${archive}")\`"
+            done
+            echo
+            echo "## Checksums"
+            echo
+            find release-assets -maxdepth 1 -type f -name '*.sha256' -print | sort | while read -r checksum; do
+              echo "- \`$(basename "${checksum}")\`"
+            done
+            echo
+            echo "## Full Changelog"
+            echo
+            echo "${compare_url}"
+          } > release-notes.md
+
       - name: Create or update latest release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
           name: ${{ needs.prepare.outputs.release_title }}
           make_latest: true
-          generate_release_notes: true
+          body_path: release-notes.md
           files: release-assets/*

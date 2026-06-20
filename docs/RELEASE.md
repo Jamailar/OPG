@@ -108,7 +108,7 @@ ghcr.io/<owner>/opg-system-web:<version>
 每次 Docker tag 发布都必须同时完成 GitHub Release：
 
 1. 对应 tag 必须创建或更新为 GitHub latest release。
-2. Release notes 必须生成更新日志，至少覆盖本次 tag 相对上一版本的提交。
+2. Release notes 必须写入更新日志，至少列出本次 tag 相对同模块上一版本 tag 的提交，不能只放 source code 链接。
 3. Release assets 必须包含可离线导入的单镜像文件：`<image-name>-<version>.tar.gz`。
 4. 每个单镜像文件必须同时上传 `.sha256` 校验文件。
 
