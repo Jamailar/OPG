@@ -121,7 +121,7 @@ Docker Hub 使用这些 GitHub Actions 配置：
 | `DOCKERHUB_TOKEN` | Secret | Docker Hub access token |
 | `DOCKERHUB_NAMESPACE` | Variable，可选 | Docker Hub 命名空间；不设置时默认使用 `DOCKERHUB_USERNAME` |
 
-完整发布成功后，workflow 会把仓库 `README.md` 同步到 Docker Hub `opg-system` 仓库说明，并把相对链接补全成 GitHub URL。Docker Hub 普通镜像仓库没有公开稳定的 per-repository avatar/logo API；镜像页头像不作为自动发布项，必要时通过 Docker Hub 账号/组织头像、Verified Publisher，或 README 顶部图片呈现品牌。
+完整发布成功后，workflow 会把 `.github/dockerhub/README.md` 同步到 Docker Hub `opg-system` 仓库说明。这个文件必须保持在 Docker Hub 25KB README 限制内，并且用于 Docker Hub 渲染的图片必须使用公开绝对 URL。Docker Hub 普通镜像仓库没有公开稳定的 per-repository avatar/logo API；镜像页头像不作为自动发布项，必要时通过 Docker Hub 账号/组织头像、Verified Publisher，或 README 顶部图片呈现品牌。
 
 每次 Docker tag 发布都必须同时完成 GitHub Release：
 

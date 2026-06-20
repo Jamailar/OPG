@@ -193,7 +193,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: ${{ vars.DOCKERHUB_NAMESPACE || secrets.DOCKERHUB_USERNAME }}/opg-system
           short-description: OPG System app backend control plane for one-person companies.
-          readme-filepath: README.md
+          readme-filepath: .github/dockerhub/README.md
           enable-url-completion: true
 
   github-release:
