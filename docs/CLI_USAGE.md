@@ -149,6 +149,19 @@ opg platform payments products --app-id <app-id>
 opg platform payments orders --app-id <app-id> --page 1
 ```
 
+维护 app 的外部 Connector：
+
+```bash
+opg connector list --app-id <app-id>
+opg connector create --app-id <app-id> --slug crm --base-url https://api.example.com
+opg connector update crm --app-id <app-id> --json '{"timeout_ms":30000}'
+opg connector credential create crm --app-id <app-id> --json '{"slug":"default","auth_mode":"bearer","secrets":{"token":"..."}}'
+opg connector action create crm --app-id <app-id> --json '{"slug":"lookup","method":"GET","path_template":"/customers/{{input.customer_id}}","request_mapping":{"query":{"expand":"orders"}}}'
+opg connector invoke crm lookup --json '{"input":{"customer_id":"123"}}'
+opg connector runs crm --app-id <app-id>
+opg connector action runs crm lookup --app-id <app-id>
+```
+
 读取和维护 Runtime Registry：
 
 ```bash
@@ -242,6 +255,12 @@ opg mcp
 - `opg_platform_app_runtime_overview`
 - `opg_platform_app_runtime_refresh`
 - `opg_platform_app_runtime_apply_template`
+- `opg_platform_app_connectors_list`
+- `opg_platform_app_connector_create`
+- `opg_platform_app_connector_credential_create`
+- `opg_platform_app_connector_action_create`
+- `opg_platform_app_connector_invoke`
+- `opg_connector_invoke`
 - `opg_database_manifest_get`
 - `opg_database_query`
 - `opg_database_execute`

@@ -8,6 +8,10 @@ import { createOpgClientFromLocalConfig } from "opg-sdk";
 const opg = await createOpgClientFromLocalConfig();
 
 const models = await opg.ai.models();
+
+const customer = await opg.connectors.invoke("crm", "lookup", {
+  input: { customer_id: "123" },
+});
 ```
 
 ## Local Login
@@ -45,11 +49,12 @@ const platform = createOpgPlatformClient({
   platformToken: process.env.OPG_PLATFORM_TOKEN!,
 });
 
-await platform.apps.create({
+const createdApp = await platform.apps.create({
   name: "Demo App",
   slug: "demo",
   kind: "WEBSITE",
 });
+const appId = String((createdApp as any).app?.id || (createdApp as any).id);
 
 await platform.runtimeSettings.update({
   api_base_url: "https://opg.example.com",
@@ -64,6 +69,23 @@ await platform.storageProviders.create({
     endpoint: "https://s3.example.com",
     bucket: "opg-assets",
   },
+});
+
+await platform.apps.connectors.create(appId, {
+  slug: "crm",
+  base_url: "https://api.example.com",
+});
+
+await platform.apps.connectors.createCredential(appId, "crm", {
+  slug: "default",
+  auth_mode: "bearer",
+  secrets: { token: process.env.CRM_TOKEN },
+});
+
+await platform.apps.connectors.createAction(appId, "crm", {
+  slug: "lookup",
+  method: "GET",
+  path_template: "/customers/{{input.customer_id}}",
 });
 ```
 
@@ -101,7 +123,7 @@ const orders = await platform.apps.payments.orders(appId, { page: 1 });
 
 Available app data namespaces include `agents`, `feedbacks`, `analytics`,
 `aiUsage`, `payments`, `email`, `site`, `redeem`, `admins`, `schema`,
-`functions`, `workflows`, `blocks`, and `build`.
+`functions`, `workflows`, `blocks`, `connectors`, and `build`.
 
 Platform-wide namespaces include `observability`, `tasks`,
 `developerAuthorizations`, `storageProviders`, `smtpProviders`,

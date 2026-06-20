@@ -52,6 +52,13 @@ const navItems = [
     path: '/platform-admin/runtime',
   },
   {
+    key: 'connectors',
+    icon: 'api',
+    label: 'Connectors',
+    desc: '自定义上游与动作',
+    path: '/platform-admin/connectors',
+  },
+  {
     key: 'jobs',
     icon: 'jobs',
     label: 'Jobs',

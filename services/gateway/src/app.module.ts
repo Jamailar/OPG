@@ -26,6 +26,7 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
 import { AppFunctionsModule } from './modules/app-functions/app-functions.module';
 import { AppWorkflowsModule } from './modules/app-workflows/app-workflows.module';
 import { AppBlocksModule } from './modules/app-blocks/app-blocks.module';
+import { AppConnectorsModule } from './modules/app-connectors/app-connectors.module';
 import { AppBuildObservabilityModule } from './modules/app-build-observability/app-build-observability.module';
 import { AppRuntimeModule } from './modules/app-runtime/app-runtime.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -59,6 +60,7 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
     AppSchemaModule,
     AppFunctionsModule,
     AppBlocksModule,
+    AppConnectorsModule,
     AppWorkflowsModule,
     AppBuildObservabilityModule,
     AppRuntimeModule,

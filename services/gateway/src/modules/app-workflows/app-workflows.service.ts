@@ -7,6 +7,7 @@ import configuration from '../../config/configuration';
 import { PRISMA_CLIENT } from '../../config/database.module';
 import { AppFunctionsService } from '../app-functions/app-functions.service';
 import { AppBlocksService } from '../app-blocks/app-blocks.service';
+import { AppConnectorsService } from '../app-connectors/app-connectors.service';
 import { AppSchemaService } from '../app-schema/app-schema.service';
 import { RealtimeEventsService } from '../realtime/realtime-events.service';
 import { AppWorkflowRow, AppWorkflowRunRow, WorkflowStepDefinition } from './app-workflows.types';
@@ -27,6 +28,7 @@ export class AppWorkflowsService implements OnModuleInit, OnApplicationShutdown 
     private readonly appSchemaService: AppSchemaService,
     private readonly appFunctionsService: AppFunctionsService,
     private readonly appBlocksService: AppBlocksService,
+    private readonly appConnectorsService: AppConnectorsService,
     private readonly realtimeEventsService: RealtimeEventsService,
   ) {}
 
@@ -200,6 +202,17 @@ export class AppWorkflowsService implements OnModuleInit, OnApplicationShutdown 
       const slug = String(step.function || step.function_slug || step.slug || '').trim();
       if (!slug) throw new BadRequestException('function.invoke step requires function');
       return this.appFunctionsService.invokeFunction(appSlug, slug, actor, { input });
+    }
+    if (type === 'connector.invoke') {
+      const connector = String(step.connector || step.connector_slug || '').trim();
+      const action = String(step.action || step.action_slug || step.slug || '').trim();
+      if (!connector) throw new BadRequestException('connector.invoke step requires connector');
+      if (!action) throw new BadRequestException('connector.invoke step requires action');
+      return this.appConnectorsService.invokeAction(appSlug, connector, action, actor, {
+        input,
+        credential: step.credential || step.credential_slug || step.credential_id,
+        trigger_type: 'workflow',
+      });
     }
     if (type === 'data.query') {
       const table = String(step.table || '').trim();

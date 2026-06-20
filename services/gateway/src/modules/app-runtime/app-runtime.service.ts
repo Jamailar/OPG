@@ -93,6 +93,23 @@ const MODULE_DEFINITIONS: ModuleDefinition[] = [
     `,
   },
   {
+    key: 'app_connectors',
+    display_name: 'Connectors',
+    category: 'runtime',
+    resource_tables: ['app_connectors'],
+    resource_count_sql: `SELECT COUNT(*)::int AS count FROM app_connectors WHERE app_id = $1::uuid AND status <> 'DELETED'`,
+    run_tables: ['app_connector_runs'],
+    run_summary_sql: `
+      SELECT COUNT(*)::int AS run_count,
+             COUNT(*) FILTER (WHERE status IN ('FAILED', 'TIMEOUT', 'CANCELED'))::int AS failure_count,
+             MAX(created_at) AS last_run_at,
+             MAX(created_at) FILTER (WHERE status IN ('FAILED', 'TIMEOUT', 'CANCELED')) AS last_failure_at
+        FROM app_connector_runs
+       WHERE app_id = $1::uuid
+         AND created_at >= now() - interval '24 hours'
+    `,
+  },
+  {
     key: 'app_blocks',
     display_name: 'AI Blocks',
     category: 'ai',
@@ -796,6 +813,10 @@ export class AppRuntimeService implements OnModuleInit {
       {
         table: 'app_workflow_runs',
         sql: `SELECT 'workflow' AS source, id::text AS id, status, created_at, finished_at, error_json AS error FROM app_workflow_runs WHERE app_id = $1::uuid ORDER BY created_at DESC LIMIT $2`,
+      },
+      {
+        table: 'app_connector_runs',
+        sql: `SELECT 'connector' AS source, id::text AS id, status, created_at, finished_at, error_json AS error FROM app_connector_runs WHERE app_id = $1::uuid ORDER BY created_at DESC LIMIT $2`,
       },
       {
         table: 'app_ai_runs',

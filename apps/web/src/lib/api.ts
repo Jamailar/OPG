@@ -2165,6 +2165,83 @@ export interface PlatformAppRuntimeOverview {
   next_actions?: Array<Record<string, unknown>>;
 }
 
+export interface PlatformConnectorItem {
+  id: string;
+  app_id: string;
+  slug: string;
+  name: string;
+  base_url: string;
+  outbound_proxy_id?: string | null;
+  timeout_ms?: number;
+  retry?: Record<string, unknown>;
+  rate_limit?: Record<string, unknown>;
+  security?: Record<string, unknown>;
+  status: string;
+  notes?: string | null;
+  action_count?: number | string;
+  credential_count?: number | string;
+  run_count_24h?: number | string;
+  failure_count_24h?: number | string;
+  last_run_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PlatformConnectorCredentialItem {
+  id: string;
+  app_id: string;
+  connector_id: string;
+  slug: string;
+  auth_mode: string;
+  public_config?: Record<string, unknown>;
+  secret_status?: Record<string, { configured: boolean; last_four?: string }>;
+  status: string;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PlatformConnectorActionItem {
+  id: string;
+  app_id: string;
+  connector_id: string;
+  credential_id?: string | null;
+  slug: string;
+  name?: string | null;
+  method: string;
+  path_template: string;
+  input_schema?: Record<string, unknown>;
+  request_mapping?: Record<string, unknown>;
+  response_mapping?: Record<string, unknown>;
+  error_mapping?: Record<string, unknown>;
+  execution_mode: string;
+  poller?: Record<string, unknown>;
+  cache?: Record<string, unknown>;
+  status: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PlatformConnectorRunItem {
+  id: string;
+  connector_id: string;
+  action_id: string;
+  credential_id?: string | null;
+  trigger_type: string;
+  input?: unknown;
+  request_summary?: Record<string, unknown>;
+  response_summary?: Record<string, unknown>;
+  output?: unknown;
+  status: string;
+  status_code?: number | null;
+  latency_ms?: number | null;
+  error?: unknown;
+  started_at?: string | null;
+  finished_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface PlatformAiModelConnectivityTestResult {
   ok: boolean;
   status_code: number | null;
@@ -3962,6 +4039,56 @@ export const platformApi = {
 
   applyAppRuntimeTemplate: async (appId: string, templateKey: string): Promise<PlatformTaskDetail> => {
     const response = await apiClient.getClient().post(`/platform-admin/apps/${appId}/runtime/templates/${templateKey}/apply`);
+    return response.data?.data || response.data;
+  },
+
+  listAppConnectors: async (appId: string): Promise<{ items: PlatformConnectorItem[] }> => {
+    const response = await apiClient.getClient().get(`/platform-admin/apps/${appId}/connectors`);
+    return response.data?.data || response.data;
+  },
+
+  createAppConnector: async (appId: string, payload: Record<string, unknown>) => {
+    const response = await apiClient.getClient().post(`/platform-admin/apps/${appId}/connectors`, payload);
+    return response.data?.data || response.data;
+  },
+
+  updateAppConnector: async (appId: string, connector: string, payload: Record<string, unknown>) => {
+    const response = await apiClient.getClient().patch(`/platform-admin/apps/${appId}/connectors/${connector}`, payload);
+    return response.data?.data || response.data;
+  },
+
+  deleteAppConnector: async (appId: string, connector: string) => {
+    const response = await apiClient.getClient().delete(`/platform-admin/apps/${appId}/connectors/${connector}`);
+    return response.data?.data || response.data;
+  },
+
+  listConnectorCredentials: async (appId: string, connector: string): Promise<{ items: PlatformConnectorCredentialItem[] }> => {
+    const response = await apiClient.getClient().get(`/platform-admin/apps/${appId}/connectors/${connector}/credentials`);
+    return response.data?.data || response.data;
+  },
+
+  createConnectorCredential: async (appId: string, connector: string, payload: Record<string, unknown>) => {
+    const response = await apiClient.getClient().post(`/platform-admin/apps/${appId}/connectors/${connector}/credentials`, payload);
+    return response.data?.data || response.data;
+  },
+
+  listConnectorActions: async (appId: string, connector: string): Promise<{ items: PlatformConnectorActionItem[] }> => {
+    const response = await apiClient.getClient().get(`/platform-admin/apps/${appId}/connectors/${connector}/actions`);
+    return response.data?.data || response.data;
+  },
+
+  createConnectorAction: async (appId: string, connector: string, payload: Record<string, unknown>) => {
+    const response = await apiClient.getClient().post(`/platform-admin/apps/${appId}/connectors/${connector}/actions`, payload);
+    return response.data?.data || response.data;
+  },
+
+  invokeConnectorAction: async (appId: string, connector: string, action: string, payload: Record<string, unknown>) => {
+    const response = await apiClient.getClient().post(`/platform-admin/apps/${appId}/connectors/${connector}/actions/${action}/invoke`, payload);
+    return response.data?.data || response.data;
+  },
+
+  listConnectorRuns: async (appId: string, connector: string): Promise<{ items: PlatformConnectorRunItem[] }> => {
+    const response = await apiClient.getClient().get(`/platform-admin/apps/${appId}/connectors/${connector}/runs`);
     return response.data?.data || response.data;
   },
 

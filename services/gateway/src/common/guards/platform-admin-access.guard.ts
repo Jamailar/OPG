@@ -175,6 +175,9 @@ export class PlatformAdminAccessGuard implements CanActivate {
     if (path.match(/^\/apps\/[^/]+\/workflows(?:\/|$)/)) {
       return { kind: 'app-super' };
     }
+    if (path.match(/^\/apps\/[^/]+\/connectors(?:\/|$)/)) {
+      return { kind: 'app-super' };
+    }
     if (path.match(/^\/apps\/[^/]+\/(?:blocks|storage)(?:\/|$)/)) {
       return { kind: 'app-super' };
     }

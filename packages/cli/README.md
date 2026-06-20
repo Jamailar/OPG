@@ -15,6 +15,7 @@ opg smoke
 opg db smoke
 opg db manifest
 opg db query --sql "SELECT * FROM app_my_app__customers"
+opg connector invoke crm lookup --json '{"input":{"customer_id":"123"}}'
 opg codex install
 ```
 
@@ -23,6 +24,7 @@ Use `opg <command> --help` for command-specific help:
 ```bash
 opg login --help
 opg app --help
+opg connector --help
 opg db --help
 opg platform --help
 ```
@@ -71,6 +73,11 @@ opg platform ai-usage breakdown --app-id <app-id> --days 7
 opg platform ai-usage logs --app-id <app-id> --days 7
 opg platform payments products --app-id <app-id>
 opg platform payments orders --app-id <app-id> --page 1
+opg connector list --app-id <app-id>
+opg connector create --app-id <app-id> --slug crm --base-url https://api.example.com
+opg connector credential create crm --app-id <app-id> --json '{"slug":"default","auth_mode":"bearer","secrets":{"token":"..."}}'
+opg connector action create crm --app-id <app-id> --json '{"slug":"lookup","method":"GET","path_template":"/customers/{{input.customer_id}}"}'
+opg connector invoke crm lookup --json '{"input":{"customer_id":"123"}}'
 opg platform request --path /storage/providers --method GET
 ```
 
@@ -96,6 +103,12 @@ Common app-data MCP tools:
 - `opg_platform_app_runtime_overview`
 - `opg_platform_app_runtime_refresh`
 - `opg_platform_app_runtime_apply_template`
+- `opg_platform_app_connectors_list`
+- `opg_platform_app_connector_create`
+- `opg_platform_app_connector_credential_create`
+- `opg_platform_app_connector_action_create`
+- `opg_platform_app_connector_invoke`
+- `opg_connector_invoke`
 
 ## Codex Database Tools
 

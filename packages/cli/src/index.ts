@@ -86,6 +86,10 @@ async function main() {
     await runWorkflowCommand(args.slice(1));
     return;
   }
+  if (command === 'connector' || command === 'connectors') {
+    await runConnectorCommand(args.slice(1));
+    return;
+  }
   if (command === 'block' || command === 'blocks') {
     await runBlockCommand(args.slice(1));
     return;
@@ -545,6 +549,124 @@ async function runWorkflowCommand(commandArgs: string[]) {
   throw new Error(`Unknown workflow command: ${action}`);
 }
 
+async function runConnectorCommand(commandArgs: string[]) {
+  const resource = commandArgs[0] || 'list';
+  const flags = parseFlags(commandArgs.slice(1));
+  const positionals = positionalArgs(commandArgs.slice(1));
+
+  if (resource === 'invoke' || resource === 'run') {
+    const connector = flags.connector || positionals[0] || '';
+    const action = flags.action || positionals[1] || '';
+    if (!connector || !action) throw new Error('Missing connector/action. Use: opg connector invoke <connector> <action> --json {...}');
+    const client = await getClientFromLocalConfigWithFlagOverrides(flags);
+    printJson(await client.connectors.invoke(connector, action, parseJsonPayload(flags)));
+    return;
+  }
+
+  const local = await readOptionalLocalConfig();
+  const appId = flags.appId || flags['app-id'] || flags.app || local.app || '';
+  if (!appId) {
+    throw new Error('Missing app id or slug. Use --app-id <id-or-slug> or run opg app use <slug>.');
+  }
+  const client = await getPlatformClientFromLocalConfigWithFlagOverrides(flags);
+
+  if (resource === 'list' || resource === 'ls') {
+    printJson(await client.apps.connectors.list(appId));
+    return;
+  }
+  if (resource === 'create') {
+    const payload = flags.json || flags.body
+      ? parseJsonPayload(flags)
+      : {
+          slug: flags.slug || flags.name || positionals[0] || '',
+          name: flags.name || flags.slug || positionals[0] || '',
+          base_url: flags.baseUrl || flags['base-url'] || flags.url || '',
+        };
+    printJson(await client.apps.connectors.create(appId, payload));
+    return;
+  }
+  if (resource === 'update') {
+    const connector = flags.connector || positionals[0] || '';
+    if (!connector) throw new Error('Missing connector slug. Use: opg connector update <connector> --json {...}');
+    printJson(await client.apps.connectors.update(appId, connector, parseJsonPayload(flags)));
+    return;
+  }
+  if (resource === 'delete' || resource === 'remove') {
+    const connector = flags.connector || positionals[0] || '';
+    if (!connector) throw new Error('Missing connector slug. Use: opg connector delete <connector>');
+    printJson(await client.apps.connectors.delete(appId, connector));
+    return;
+  }
+  if (resource === 'credential' || resource === 'credentials') {
+    const action = commandArgs[1] || 'list';
+    const nestedFlags = parseFlags(commandArgs.slice(2));
+    const nestedPositionals = positionalArgs(commandArgs.slice(2));
+    const connector = nestedFlags.connector || nestedPositionals[0] || '';
+    if (!connector) throw new Error('Missing connector slug. Use: opg connector credential list <connector>');
+    if (action === 'list' || action === 'ls') {
+      printJson(await client.apps.connectors.credentials(appId, connector));
+      return;
+    }
+    if (action === 'create') {
+      printJson(await client.apps.connectors.createCredential(appId, connector, parseJsonPayload(nestedFlags)));
+      return;
+    }
+    if (action === 'update') {
+      const credential = nestedFlags.credential || nestedPositionals[1] || '';
+      if (!credential) throw new Error('Missing credential slug. Use: opg connector credential update <connector> <credential> --json {...}');
+      printJson(await client.apps.connectors.updateCredential(appId, connector, credential, parseJsonPayload(nestedFlags)));
+      return;
+    }
+    if (action === 'delete' || action === 'remove') {
+      const credential = nestedFlags.credential || nestedPositionals[1] || '';
+      if (!credential) throw new Error('Missing credential slug. Use: opg connector credential delete <connector> <credential>');
+      printJson(await client.apps.connectors.deleteCredential(appId, connector, credential));
+      return;
+    }
+  }
+  if (resource === 'action' || resource === 'actions') {
+    const action = commandArgs[1] || 'list';
+    const nestedFlags = parseFlags(commandArgs.slice(2));
+    const nestedPositionals = positionalArgs(commandArgs.slice(2));
+    const connector = nestedFlags.connector || nestedPositionals[0] || '';
+    if (!connector) throw new Error('Missing connector slug. Use: opg connector action list <connector>');
+    if (action === 'list' || action === 'ls') {
+      printJson(await client.apps.connectors.actions(appId, connector));
+      return;
+    }
+    if (action === 'create') {
+      printJson(await client.apps.connectors.createAction(appId, connector, parseJsonPayload(nestedFlags)));
+      return;
+    }
+    if (action === 'update') {
+      const actionSlug = nestedFlags.action || nestedPositionals[1] || '';
+      if (!actionSlug) throw new Error('Missing action slug. Use: opg connector action update <connector> <action> --json {...}');
+      printJson(await client.apps.connectors.updateAction(appId, connector, actionSlug, parseJsonPayload(nestedFlags)));
+      return;
+    }
+    if (action === 'delete' || action === 'remove') {
+      const actionSlug = nestedFlags.action || nestedPositionals[1] || '';
+      if (!actionSlug) throw new Error('Missing action slug. Use: opg connector action delete <connector> <action>');
+      printJson(await client.apps.connectors.deleteAction(appId, connector, actionSlug));
+      return;
+    }
+    if (action === 'runs') {
+      const actionSlug = nestedFlags.action || nestedPositionals[1] || '';
+      if (!actionSlug) throw new Error('Missing action slug. Use: opg connector action runs <connector> <action>');
+      printJson(await client.apps.connectors.actionRuns(appId, connector, actionSlug));
+      return;
+    }
+  }
+  if (resource === 'runs') {
+    const connector = flags.connector || positionals[0] || '';
+    if (!connector) throw new Error('Missing connector slug. Use: opg connector runs <connector>');
+    printJson(await client.apps.connectors.runs(appId, connector));
+    return;
+  }
+
+  throw new Error(`Unknown connector command: ${resource}`);
+}
+
 async function runBlockCommand(commandArgs: string[]) {
   const resource = commandArgs[0] || 'ai';
   const action = commandArgs[1] || 'upsert';
@@ -769,6 +891,85 @@ async function runPlatformCommand(commandArgs: string[]) {
       const orderId = flags.orderId || flags['order-id'] || '';
       if (!orderId) throw new Error('Missing order id. Use: opg platform payments refund --app-id <id> --order-id <id> --json {...}');
       printJson(await client.apps.payments.refundOrder(appId, orderId, flags.json ? parseJsonPayload(flags) : {}));
+      return;
+    }
+  }
+
+  if (resource === 'connectors' || resource === 'connector' || resource === 'app-connectors') {
+    const appId = requirePlatformAppId(flags);
+    const connector = flags.connector || flags.connectorId || flags['connector-id'] || '';
+    const credential = flags.credential || flags.credentialId || flags['credential-id'] || '';
+    const actionRef = flags.actionId || flags['action-id'] || flags.action || '';
+    const requireConnector = () => {
+      if (!connector) throw new Error('Missing connector. Use --connector <id-or-slug>.');
+      return connector;
+    };
+    const requireCredential = () => {
+      if (!credential) throw new Error('Missing credential. Use --credential <id-or-slug>.');
+      return credential;
+    };
+    const requireConnectorAction = () => {
+      if (!actionRef) throw new Error('Missing connector action. Use --action-id <id-or-slug>.');
+      return actionRef;
+    };
+    if (action === 'list') {
+      printJson(await client.apps.connectors.list(appId));
+      return;
+    }
+    if (action === 'create') {
+      printJson(await client.apps.connectors.create(appId, parseJsonPayload(flags)));
+      return;
+    }
+    if (action === 'update') {
+      printJson(await client.apps.connectors.update(appId, requireConnector(), parseJsonPayload(flags)));
+      return;
+    }
+    if (action === 'delete' || action === 'remove') {
+      printJson(await client.apps.connectors.delete(appId, requireConnector()));
+      return;
+    }
+    if (action === 'credentials' || action === 'list-credentials') {
+      printJson(await client.apps.connectors.credentials(appId, requireConnector()));
+      return;
+    }
+    if (action === 'create-credential') {
+      printJson(await client.apps.connectors.createCredential(appId, requireConnector(), parseJsonPayload(flags)));
+      return;
+    }
+    if (action === 'update-credential') {
+      printJson(await client.apps.connectors.updateCredential(appId, requireConnector(), requireCredential(), parseJsonPayload(flags)));
+      return;
+    }
+    if (action === 'delete-credential') {
+      printJson(await client.apps.connectors.deleteCredential(appId, requireConnector(), requireCredential()));
+      return;
+    }
+    if (action === 'actions' || action === 'list-actions') {
+      printJson(await client.apps.connectors.actions(appId, requireConnector()));
+      return;
+    }
+    if (action === 'create-action') {
+      printJson(await client.apps.connectors.createAction(appId, requireConnector(), parseJsonPayload(flags)));
+      return;
+    }
+    if (action === 'update-action') {
+      printJson(await client.apps.connectors.updateAction(appId, requireConnector(), requireConnectorAction(), parseJsonPayload(flags)));
+      return;
+    }
+    if (action === 'delete-action') {
+      printJson(await client.apps.connectors.deleteAction(appId, requireConnector(), requireConnectorAction()));
+      return;
+    }
+    if (action === 'invoke') {
+      printJson(await client.apps.connectors.invoke(appId, requireConnector(), requireConnectorAction(), flags.json ? parseJsonPayload(flags) : {}));
+      return;
+    }
+    if (action === 'runs') {
+      printJson(await client.apps.connectors.runs(appId, requireConnector()));
+      return;
+    }
+    if (action === 'action-runs') {
+      printJson(await client.apps.connectors.actionRuns(appId, requireConnector(), requireConnectorAction()));
       return;
     }
   }
@@ -1072,6 +1273,234 @@ async function startMcpServer() {
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     async ({ slug, payload }: any) => toToolResult(await client.workflows.run(slug, payload)),
+  );
+
+  registerTool(
+    'opg_platform_app_connectors_list',
+    {
+      title: 'List OPG App Connectors',
+      description: 'List external service connectors configured for one tenant app.',
+      inputSchema: { appId: z.string().min(1).describe('Tenant app id or slug.') },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ appId }: any) => toToolResult(await platformClient.apps.connectors.list(appId)),
+  );
+
+  registerTool(
+    'opg_platform_app_connector_create',
+    {
+      title: 'Create OPG App Connector',
+      description: 'Create an app connector with base URL, retry, rate limit, and security settings.',
+      inputSchema: {
+        appId: z.string().min(1).describe('Tenant app id or slug.'),
+        payload: z.record(z.unknown()).describe('Connector payload: slug, name, base_url, timeout_ms, retry, rate_limit, security.'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ appId, payload }: any) => toToolResult(await platformClient.apps.connectors.create(appId, payload)),
+  );
+
+  registerTool(
+    'opg_platform_app_connector_update',
+    {
+      title: 'Update OPG App Connector',
+      description: 'Update an app connector by id or slug.',
+      inputSchema: {
+        appId: z.string().min(1).describe('Tenant app id or slug.'),
+        connector: z.string().min(1).describe('Connector id or slug.'),
+        payload: z.record(z.unknown()),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ appId, connector, payload }: any) => toToolResult(await platformClient.apps.connectors.update(appId, connector, payload)),
+  );
+
+  registerTool(
+    'opg_platform_app_connector_delete',
+    {
+      title: 'Delete OPG App Connector',
+      description: 'Soft-delete an app connector by id or slug.',
+      inputSchema: {
+        appId: z.string().min(1).describe('Tenant app id or slug.'),
+        connector: z.string().min(1).describe('Connector id or slug.'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ appId, connector }: any) => toToolResult(await platformClient.apps.connectors.delete(appId, connector)),
+  );
+
+  registerTool(
+    'opg_platform_app_connector_credentials_list',
+    {
+      title: 'List OPG Connector Credentials',
+      description: 'List credentials configured for one app connector. Secret values are not returned.',
+      inputSchema: {
+        appId: z.string().min(1),
+        connector: z.string().min(1).describe('Connector id or slug.'),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ appId, connector }: any) => toToolResult(await platformClient.apps.connectors.credentials(appId, connector)),
+  );
+
+  registerTool(
+    'opg_platform_app_connector_credential_create',
+    {
+      title: 'Create OPG Connector Credential',
+      description: 'Create an encrypted credential for an app connector.',
+      inputSchema: {
+        appId: z.string().min(1),
+        connector: z.string().min(1).describe('Connector id or slug.'),
+        payload: z.record(z.unknown()).describe('Credential payload: slug, auth_mode, public_config, secrets.'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ appId, connector, payload }: any) => toToolResult(await platformClient.apps.connectors.createCredential(appId, connector, payload)),
+  );
+
+  registerTool(
+    'opg_platform_app_connector_credential_update',
+    {
+      title: 'Update OPG Connector Credential',
+      description: 'Update an encrypted credential for an app connector.',
+      inputSchema: {
+        appId: z.string().min(1),
+        connector: z.string().min(1).describe('Connector id or slug.'),
+        credential: z.string().min(1).describe('Credential id or slug.'),
+        payload: z.record(z.unknown()),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ appId, connector, credential, payload }: any) =>
+      toToolResult(await platformClient.apps.connectors.updateCredential(appId, connector, credential, payload)),
+  );
+
+  registerTool(
+    'opg_platform_app_connector_credential_delete',
+    {
+      title: 'Delete OPG Connector Credential',
+      description: 'Soft-delete a connector credential by id or slug.',
+      inputSchema: {
+        appId: z.string().min(1),
+        connector: z.string().min(1).describe('Connector id or slug.'),
+        credential: z.string().min(1).describe('Credential id or slug.'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ appId, connector, credential }: any) =>
+      toToolResult(await platformClient.apps.connectors.deleteCredential(appId, connector, credential)),
+  );
+
+  registerTool(
+    'opg_platform_app_connector_actions_list',
+    {
+      title: 'List OPG Connector Actions',
+      description: 'List callable actions for one app connector.',
+      inputSchema: {
+        appId: z.string().min(1),
+        connector: z.string().min(1).describe('Connector id or slug.'),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ appId, connector }: any) => toToolResult(await platformClient.apps.connectors.actions(appId, connector)),
+  );
+
+  registerTool(
+    'opg_platform_app_connector_action_create',
+    {
+      title: 'Create OPG Connector Action',
+      description: 'Create a callable HTTP action under one app connector.',
+      inputSchema: {
+        appId: z.string().min(1),
+        connector: z.string().min(1).describe('Connector id or slug.'),
+        payload: z.record(z.unknown()).describe('Action payload: slug, method, path_template, input_schema, request_mapping, response_mapping.'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ appId, connector, payload }: any) => toToolResult(await platformClient.apps.connectors.createAction(appId, connector, payload)),
+  );
+
+  registerTool(
+    'opg_platform_app_connector_action_update',
+    {
+      title: 'Update OPG Connector Action',
+      description: 'Update a connector action by id or slug.',
+      inputSchema: {
+        appId: z.string().min(1),
+        connector: z.string().min(1).describe('Connector id or slug.'),
+        actionId: z.string().min(1).describe('Action id or slug.'),
+        payload: z.record(z.unknown()),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ appId, connector, actionId, payload }: any) =>
+      toToolResult(await platformClient.apps.connectors.updateAction(appId, connector, actionId, payload)),
+  );
+
+  registerTool(
+    'opg_platform_app_connector_action_delete',
+    {
+      title: 'Delete OPG Connector Action',
+      description: 'Soft-delete a connector action by id or slug.',
+      inputSchema: {
+        appId: z.string().min(1),
+        connector: z.string().min(1).describe('Connector id or slug.'),
+        actionId: z.string().min(1).describe('Action id or slug.'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ appId, connector, actionId }: any) =>
+      toToolResult(await platformClient.apps.connectors.deleteAction(appId, connector, actionId)),
+  );
+
+  registerTool(
+    'opg_platform_app_connector_invoke',
+    {
+      title: 'Invoke OPG Connector Action',
+      description: 'Invoke one connector action through the platform control plane.',
+      inputSchema: {
+        appId: z.string().min(1),
+        connector: z.string().min(1).describe('Connector id or slug.'),
+        actionId: z.string().min(1).describe('Action id or slug.'),
+        payload: z.record(z.unknown()).default({}).describe('Invocation payload, usually { input }.'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    },
+    async ({ appId, connector, actionId, payload }: any) =>
+      toToolResult(await platformClient.apps.connectors.invoke(appId, connector, actionId, payload || {})),
+  );
+
+  registerTool(
+    'opg_platform_app_connector_runs_list',
+    {
+      title: 'List OPG Connector Runs',
+      description: 'List recent runs for one connector or connector action.',
+      inputSchema: {
+        appId: z.string().min(1),
+        connector: z.string().min(1).describe('Connector id or slug.'),
+        actionId: z.string().optional().describe('Optional action id or slug.'),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ appId, connector, actionId }: any) =>
+      toToolResult(actionId
+        ? await platformClient.apps.connectors.actionRuns(appId, connector, actionId)
+        : await platformClient.apps.connectors.runs(appId, connector)),
+  );
+
+  registerTool(
+    'opg_connector_invoke',
+    {
+      title: 'Invoke Configured OPG App Connector',
+      description: 'Invoke a connector action through the configured app-scoped SDK credentials.',
+      inputSchema: {
+        connector: z.string().min(1).describe('Connector id or slug.'),
+        actionId: z.string().min(1).describe('Action id or slug.'),
+        payload: z.record(z.unknown()).default({}).describe('Invocation payload, usually { input }.'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    },
+    async ({ connector, actionId, payload }: any) => toToolResult(await client.connectors.invoke(connector, actionId, payload || {})),
   );
 
   registerTool(
@@ -2219,7 +2648,7 @@ function parseScopesFlag(flags: Record<string, string>) {
   return raw.split(',').map((item) => item.trim()).filter(Boolean);
 }
 
-type HelpTopic = 'root' | 'init' | 'login' | 'app' | 'db' | 'schema' | 'data' | 'function' | 'workflow' | 'block' | 'platform' | 'codex' | 'mcp';
+type HelpTopic = 'root' | 'init' | 'login' | 'app' | 'db' | 'schema' | 'data' | 'function' | 'workflow' | 'connector' | 'block' | 'platform' | 'codex' | 'mcp';
 
 function isHelpRequest(commandArgs: string[]) {
   return commandArgs.length === 0 || commandArgs.some(isHelpToken);
@@ -2235,8 +2664,9 @@ function resolveHelpTopic(commandArgs: string[]): HelpTopic {
   if (firstTopic === 'apps') return 'app';
   if (firstTopic === 'functions') return 'function';
   if (firstTopic === 'workflows') return 'workflow';
+  if (firstTopic === 'connectors') return 'connector';
   if (firstTopic === 'blocks') return 'block';
-  if (['init', 'login', 'app', 'db', 'schema', 'data', 'function', 'workflow', 'block', 'platform', 'codex', 'mcp'].includes(firstTopic)) {
+  if (['init', 'login', 'app', 'db', 'schema', 'data', 'function', 'workflow', 'connector', 'block', 'platform', 'codex', 'mcp'].includes(firstTopic)) {
     return firstTopic as HelpTopic;
   }
   return 'root';
@@ -2424,7 +2854,24 @@ Usage:
   opg workflow runs --app-id <app> onboard
 
 Notes:
-  First-class step types: data.query, data.create, function.invoke, noop.
+  First-class step types: data.query, data.create, function.invoke, connector.invoke, noop.
+`);
+    return;
+  }
+
+  if (topic === 'connector') {
+    console.log(`OPG CLI - connector
+
+Usage:
+  opg connector list --app-id <app>
+  opg connector create --app-id <app> --slug webhook --base-url https://api.example.com
+  opg connector credential create webhook --app-id <app> --json '{"slug":"default","auth_mode":"bearer","secrets":{"token":"..."}}'
+  opg connector action create webhook --app-id <app> --json '{"slug":"send","method":"POST","path_template":"/hooks","request_mapping":{"body":"{{input}}"}}'
+  opg connector invoke webhook send --json '{"input":{"hello":"world"}}'
+  opg connector runs webhook --app-id <app>
+
+Notes:
+  Connector action routes are deduped per connector by slug and by method + path_template.
 `);
     return;
   }
@@ -2466,6 +2913,15 @@ Usage:
   opg platform ai-usage logs --app-id <id> --days 7
   opg platform payments products --app-id <id>
   opg platform payments orders --app-id <id>
+  opg platform connectors list --app-id <id>
+  opg platform connectors create --app-id <id> --json '{...}'
+  opg platform connectors update --app-id <id> --connector <slug> --json '{...}'
+  opg platform connectors credentials --app-id <id> --connector <slug>
+  opg platform connectors create-credential --app-id <id> --connector <slug> --json '{...}'
+  opg platform connectors actions --app-id <id> --connector <slug>
+  opg platform connectors create-action --app-id <id> --connector <slug> --json '{...}'
+  opg platform connectors invoke --app-id <id> --connector <slug> --action-id <slug> --json '{...}'
+  opg platform connectors runs --app-id <id> --connector <slug>
   opg platform runtime get
   opg platform runtime update --json '{...}'
   opg platform runtime overview
@@ -2480,6 +2936,9 @@ Options:
   --base-url <url>       OPG gateway base URL.
   --platform-token <jwt> Platform admin token. Usually loaded from opg login.
   --app-id <id>          Target tenant app id for app data operations.
+  --connector <id>       Connector id or slug for connector commands.
+  --credential <id>      Credential id or slug for connector credential commands.
+  --action-id <id>       Connector action id or slug for invoke/run commands.
   --json <json>          Request body for create/update actions.
   --query <json>         Query parameters as JSON object.
   --method <method>      HTTP method for platform request. Default: GET
@@ -2543,6 +3002,7 @@ Core commands:
   data          Read and write registered app data rows.
   function      Create, deploy, invoke, and inspect app functions.
   workflow      Create, run, and inspect app workflows.
+  connector     Create and invoke generic upstream API connectors.
   block         Create and run AI/video/storage blocks.
   platform      Call platform control-plane APIs.
   codex         Write Codex MCP config.
@@ -2558,6 +3018,7 @@ Common flow:
   opg data list customers
   opg function invoke sync_customer --json '{"input":{"id":"123"}}'
   opg workflow run onboard --json '{"input":{"id":"123"}}'
+  opg connector invoke webhook send --json '{"input":{"id":"123"}}'
   opg codex install
 
 Help:
@@ -2568,8 +3029,9 @@ Help:
   opg schema --help
   opg data --help
   opg function --help
-  opg block --help
   opg workflow --help
+  opg connector --help
+  opg block --help
   opg platform --help
 `);
 }

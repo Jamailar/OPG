@@ -26,6 +26,7 @@ import PlatformObservabilityPage from '@/pages/platform/PlatformObservabilityPag
 import DeveloperAuthorizationsPage from '@/pages/platform/DeveloperAuthorizationsPage';
 import PlatformJobsPage from '@/pages/platform/PlatformJobsPage';
 import PlatformRuntimePage from '@/pages/platform/PlatformRuntimePage';
+import PlatformConnectorsPage from '@/pages/platform/PlatformConnectorsPage';
 import PlatformLayout from '@/components/PlatformLayout';
 import { applyRuntimeContext, runtimeContext } from '@/lib/runtime-context';
 import '@/styles/globals.css';
@@ -251,6 +252,15 @@ function App() {
             element={
               <PlatformProtectedRoute>
                 <PlatformRuntimePage />
+              </PlatformProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/platform-admin/connectors"
+            element={
+              <PlatformProtectedRoute>
+                <PlatformConnectorsPage />
               </PlatformProtectedRoute>
             }
           />

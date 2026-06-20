@@ -251,6 +251,23 @@ export type OpgPlatformClient = {
       runs(appId: string, workflowId: string): Promise<Record<string, unknown>>;
       delete(appId: string, workflowId: string, input?: Record<string, unknown>): Promise<Record<string, unknown>>;
     };
+    connectors: {
+      list(appId: string): Promise<Record<string, unknown>>;
+      create(appId: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+      update(appId: string, connector: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+      delete(appId: string, connector: string): Promise<Record<string, unknown>>;
+      credentials(appId: string, connector: string): Promise<Record<string, unknown>>;
+      createCredential(appId: string, connector: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+      updateCredential(appId: string, connector: string, credential: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+      deleteCredential(appId: string, connector: string, credential: string): Promise<Record<string, unknown>>;
+      actions(appId: string, connector: string): Promise<Record<string, unknown>>;
+      createAction(appId: string, connector: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+      updateAction(appId: string, connector: string, action: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+      deleteAction(appId: string, connector: string, action: string): Promise<Record<string, unknown>>;
+      invoke(appId: string, connector: string, action: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+      runs(appId: string, connector: string): Promise<Record<string, unknown>>;
+      actionRuns(appId: string, connector: string, action: string): Promise<Record<string, unknown>>;
+    };
     blocks: {
       upsertAi(appId: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
       upsertVideo(appId: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
@@ -443,6 +460,9 @@ export type OpgClient = OpgClientInternals & {
   workflows: {
     run(slug: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
   };
+  connectors: {
+    invoke(connector: string, action: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+  };
   realtime: {
     subscribe(
       channel: string,
@@ -620,6 +640,10 @@ export function createOpgClient(options: OpgClientOptions): OpgClient {
     },
     workflows: {
       run: (slug, input) => request<Record<string, unknown>>(`/workflows/${encodeURIComponent(slug)}/run`, { method: 'POST', body: input }),
+    },
+    connectors: {
+      invoke: (connector, action, input) =>
+        request<Record<string, unknown>>(`/connectors/${encodeURIComponent(connector)}/actions/${encodeURIComponent(action)}/invoke`, { method: 'POST', body: input }),
     },
     realtime: {
       subscribe: subscribeRealtime,
@@ -824,6 +848,28 @@ export function createOpgPlatformClient(options: OpgClientOptions): OpgPlatformC
         run: (appId, workflowId, input) => request(appPath(appId, `/workflows/${encodeURIComponent(workflowId)}/run`), { method: 'POST', body: input }),
         runs: (appId, workflowId) => request(appPath(appId, `/workflows/${encodeURIComponent(workflowId)}/runs`)),
         delete: (appId, workflowId, input = {}) => request(appPath(appId, `/workflows/${encodeURIComponent(workflowId)}`), { method: 'DELETE', body: input }),
+      },
+      connectors: {
+        list: (appId) => request(appPath(appId, '/connectors')),
+        create: (appId, input) => request(appPath(appId, '/connectors'), { method: 'POST', body: input }),
+        update: (appId, connector, input) => request(appPath(appId, `/connectors/${encodeURIComponent(connector)}`), { method: 'PATCH', body: input }),
+        delete: (appId, connector) => request(appPath(appId, `/connectors/${encodeURIComponent(connector)}`), { method: 'DELETE' }),
+        credentials: (appId, connector) => request(appPath(appId, `/connectors/${encodeURIComponent(connector)}/credentials`)),
+        createCredential: (appId, connector, input) => request(appPath(appId, `/connectors/${encodeURIComponent(connector)}/credentials`), { method: 'POST', body: input }),
+        updateCredential: (appId, connector, credential, input) =>
+          request(appPath(appId, `/connectors/${encodeURIComponent(connector)}/credentials/${encodeURIComponent(credential)}`), { method: 'PATCH', body: input }),
+        deleteCredential: (appId, connector, credential) =>
+          request(appPath(appId, `/connectors/${encodeURIComponent(connector)}/credentials/${encodeURIComponent(credential)}`), { method: 'DELETE' }),
+        actions: (appId, connector) => request(appPath(appId, `/connectors/${encodeURIComponent(connector)}/actions`)),
+        createAction: (appId, connector, input) => request(appPath(appId, `/connectors/${encodeURIComponent(connector)}/actions`), { method: 'POST', body: input }),
+        updateAction: (appId, connector, action, input) =>
+          request(appPath(appId, `/connectors/${encodeURIComponent(connector)}/actions/${encodeURIComponent(action)}`), { method: 'PATCH', body: input }),
+        deleteAction: (appId, connector, action) =>
+          request(appPath(appId, `/connectors/${encodeURIComponent(connector)}/actions/${encodeURIComponent(action)}`), { method: 'DELETE' }),
+        invoke: (appId, connector, action, input) =>
+          request(appPath(appId, `/connectors/${encodeURIComponent(connector)}/actions/${encodeURIComponent(action)}/invoke`), { method: 'POST', body: input }),
+        runs: (appId, connector) => request(appPath(appId, `/connectors/${encodeURIComponent(connector)}/runs`)),
+        actionRuns: (appId, connector, action) => request(appPath(appId, `/connectors/${encodeURIComponent(connector)}/actions/${encodeURIComponent(action)}/runs`)),
       },
       blocks: {
         upsertAi: (appId, input) => request(appPath(appId, '/blocks/ai'), { method: 'POST', body: input }),

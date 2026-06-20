@@ -5,6 +5,7 @@ import { PlatformAdminAccessGuard } from '../../common/guards/platform-admin-acc
 import { AppApiKeysModule } from '../api-keys/app-api-keys.module';
 import { AppFunctionsModule } from '../app-functions/app-functions.module';
 import { AppBlocksModule } from '../app-blocks/app-blocks.module';
+import { AppConnectorsModule } from '../app-connectors/app-connectors.module';
 import { AppSchemaModule } from '../app-schema/app-schema.module';
 import { AuthModule } from '../auth/auth.module';
 import { DeveloperAuthorizationModule } from '../developer-sdk/developer-authorization.module';
@@ -15,7 +16,7 @@ import { AppWorkflowsPlatformController } from './app-workflows-platform.control
 import { AppWorkflowsService } from './app-workflows.service';
 
 @Module({
-  imports: [AuthModule, AppApiKeysModule, DeveloperAuthorizationModule, AppSchemaModule, AppFunctionsModule, AppBlocksModule, RealtimeModule],
+  imports: [AuthModule, AppApiKeysModule, DeveloperAuthorizationModule, AppSchemaModule, AppFunctionsModule, AppBlocksModule, AppConnectorsModule, RealtimeModule],
   controllers: [AppWorkflowsPlatformController, AppWorkflowsAppController],
   providers: [AppWorkflowsService, JwtAuthGuard, AdminRoleGuard, PlatformAdminAccessGuard, DeveloperSdkAuthGuard],
   exports: [AppWorkflowsService],

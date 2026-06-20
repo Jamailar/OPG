@@ -110,6 +110,14 @@ export class DeveloperSdkService {
           runs: true,
           delete: true,
         },
+        connectors: {
+          create: true,
+          credentials: true,
+          actions: true,
+          invoke: true,
+          runs: true,
+          route_dedupe: true,
+        },
         ai_blocks: {
           upsert: true,
           run: true,
@@ -150,6 +158,11 @@ export class DeveloperSdkService {
         workflows_list: '/api/v1/platform-admin/apps/{app}/workflows',
         workflows_runtime_status: '/api/v1/platform-admin/workflows/runtime/status',
         workflow_run: '/workflows/{slug}/run',
+        connectors_list: '/api/v1/platform-admin/apps/{app}/connectors',
+        connector_credentials: '/api/v1/platform-admin/apps/{app}/connectors/{connector}/credentials',
+        connector_actions: '/api/v1/platform-admin/apps/{app}/connectors/{connector}/actions',
+        connector_invoke: '/connectors/{connector}/actions/{action}/invoke',
+        connector_runs: '/api/v1/platform-admin/apps/{app}/connectors/{connector}/runs',
         schema_manifest: '/api/v1/platform-admin/apps/{app}/schema/manifest',
         schema_table: '/api/v1/platform-admin/apps/{app}/schema/tables/{table}',
         schema_policies: '/api/v1/platform-admin/apps/{app}/schema/tables/{table}/policies',
@@ -218,6 +231,7 @@ export class DeveloperSdkService {
         '/images/generations': { post: { operationId: 'createImage', summary: 'Generate images through OPG AI Gateway' } },
         '/videos/generations/async': { post: { operationId: 'createVideoTask', summary: 'Create async video generation task' } },
         '/videos/generations/tasks/query': { post: { operationId: 'queryVideoTask', summary: 'Query async video generation task' } },
+        '/connectors/{connector}/actions/{action}/invoke': { post: { operationId: 'invokeConnectorAction', summary: 'Invoke a configured connector action' } },
         '/agent': { get: { operationId: 'listAgents', summary: 'List published app agents' } },
         '/agent/{slug}/run': { post: { operationId: 'runAgent', summary: 'Run a published app agent' } },
         '/agent/{slug}/stream': { post: { operationId: 'streamAgent', summary: 'Stream a published app agent run' } },
@@ -325,6 +339,11 @@ opg db execute --sql "CREATE TABLE ${databaseNamespace}customers (id uuid PRIMAR
         key: 'database',
         ok: true,
         message: 'App-scoped database manifest/query/execute routes are present in the SDK manifest',
+      },
+      {
+        key: 'connectors',
+        ok: true,
+        message: 'Connector action invoke routes are present in the SDK manifest',
       },
     ];
 
