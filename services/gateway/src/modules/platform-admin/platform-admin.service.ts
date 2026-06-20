@@ -65,6 +65,8 @@ type TenantAnalyticsQuery = {
 const ADMIN_PERMISSION_CATALOG = PLATFORM_APP_ADMIN_PERMISSION_CATALOG;
 const ADMIN_PERMISSION_KEYS = PLATFORM_APP_ADMIN_PERMISSION_KEYS;
 const ALL_ADMIN_PAGE_PERMISSIONS = [...ADMIN_PERMISSION_KEYS].sort();
+const APP_KIND_VALUES = ['DESKTOP', 'WEBSITE', 'MOBILE'] as const;
+type AppKindValue = (typeof APP_KIND_VALUES)[number];
 
 type AppSettingsWechatConfig = {
   wechat_open_app_ref_id?: string;
@@ -457,6 +459,11 @@ export class PlatformAdminService implements OnModuleInit {
     if (this.isPlatformAppSlug(slug)) {
       throw new BadRequestException('platform app slug is reserved');
     }
+  }
+
+  private normalizeAppKind(value: unknown): AppKindValue {
+    const normalized = String(value || '').trim().toUpperCase();
+    return APP_KIND_VALUES.includes(normalized as AppKindValue) ? (normalized as AppKindValue) : 'WEBSITE';
   }
 
   async listApps(includeInactive = true) {
@@ -1686,17 +1693,19 @@ export class PlatformAdminService implements OnModuleInit {
       throw new BadRequestException('name is required');
     }
     const status = String(payload.status || '').trim().toUpperCase() === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    const kind = this.normalizeAppKind(payload.kind);
     const existing = await this.prisma.app.findUnique({ where: { slug } });
     if (existing) {
       throw new BadRequestException('App slug already exists');
     }
     await this.assertSlugNotUsedByAlias(slug);
     const inserted = await (this.prisma.$queryRawUnsafe(
-      `INSERT INTO apps (id, slug, name, status, created_at, updated_at)
-       VALUES (gen_random_uuid(), $1, $2, $3::"AppStatus", now(), now())
+      `INSERT INTO apps (id, slug, name, kind, status, created_at, updated_at)
+       VALUES (gen_random_uuid(), $1, $2, $3::"AppKind", $4::"AppStatus", now(), now())
        RETURNING id`,
       slug,
       name,
+      kind,
       status,
     ) as Promise<Array<{ id: string }>>);
     const app = { id: inserted[0]?.id };
@@ -1773,9 +1782,23 @@ export class PlatformAdminService implements OnModuleInit {
     }
     const nextStatusRaw = String(payload.status || '').trim().toUpperCase();
     const nextStatus = nextStatusRaw === 'ACTIVE' || nextStatusRaw === 'INACTIVE' ? nextStatusRaw : undefined;
+    const nextKind = payload.kind === undefined ? undefined : this.normalizeAppKind(payload.kind);
 
-    if (nextNameRaw !== undefined || nextStatus !== undefined) {
-      if (nextNameRaw !== undefined && nextStatus !== undefined) {
+    if (nextNameRaw !== undefined || nextStatus !== undefined || nextKind !== undefined) {
+      if (nextNameRaw !== undefined && nextStatus !== undefined && nextKind !== undefined) {
+        await this.prisma.$executeRawUnsafe(
+          `UPDATE apps
+           SET name = $2,
+               status = $3::"AppStatus",
+               kind = $4::"AppKind",
+               updated_at = now()
+           WHERE id = $1::uuid`,
+          appId,
+          nextNameRaw,
+          nextStatus,
+          nextKind,
+        );
+      } else if (nextNameRaw !== undefined && nextStatus !== undefined) {
         await this.prisma.$executeRawUnsafe(
           `UPDATE apps
            SET name = $2,
@@ -1785,6 +1808,28 @@ export class PlatformAdminService implements OnModuleInit {
           appId,
           nextNameRaw,
           nextStatus,
+        );
+      } else if (nextNameRaw !== undefined && nextKind !== undefined) {
+        await this.prisma.$executeRawUnsafe(
+          `UPDATE apps
+           SET name = $2,
+               kind = $3::"AppKind",
+               updated_at = now()
+           WHERE id = $1::uuid`,
+          appId,
+          nextNameRaw,
+          nextKind,
+        );
+      } else if (nextStatus !== undefined && nextKind !== undefined) {
+        await this.prisma.$executeRawUnsafe(
+          `UPDATE apps
+           SET status = $2::"AppStatus",
+               kind = $3::"AppKind",
+               updated_at = now()
+           WHERE id = $1::uuid`,
+          appId,
+          nextStatus,
+          nextKind,
         );
       } else if (nextNameRaw !== undefined) {
         await this.prisma.$executeRawUnsafe(
@@ -1803,6 +1848,15 @@ export class PlatformAdminService implements OnModuleInit {
            WHERE id = $1::uuid`,
           appId,
           nextStatus,
+        );
+      } else if (nextKind !== undefined) {
+        await this.prisma.$executeRawUnsafe(
+          `UPDATE apps
+           SET kind = $2::"AppKind",
+               updated_at = now()
+           WHERE id = $1::uuid`,
+          appId,
+          nextKind,
         );
       }
     }
@@ -4549,6 +4603,7 @@ export class PlatformAdminService implements OnModuleInit {
       id: app.id,
       slug: app.slug,
       name: app.name,
+      kind: this.normalizeAppKind(app.kind),
       status: app.status,
       created_at: app.createdAt,
       updated_at: app.updatedAt,

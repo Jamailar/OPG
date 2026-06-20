@@ -4,6 +4,7 @@ import {
   platformApi,
   PlatformAppItem,
   PlatformAppDomainInput,
+  PlatformAppKind,
   PlatformAppSettingsInput,
 } from '@/lib/api';
 import { pickApiData, pickApiErrorMessage } from '@/lib/api-response';
@@ -13,6 +14,7 @@ type Message = { type: 'success' | 'error'; text: string } | null;
 interface AppFormState {
   slug: string;
   name: string;
+  kind: PlatformAppKind;
   status: 'ACTIVE' | 'INACTIVE';
   brand_name: string;
   app_url: string;
@@ -28,6 +30,7 @@ interface AppFormState {
 const EMPTY_FORM: AppFormState = {
   slug: '',
   name: '',
+  kind: 'WEBSITE',
   status: 'ACTIVE',
   brand_name: '',
   app_url: '',
@@ -39,6 +42,16 @@ const EMPTY_FORM: AppFormState = {
   email_expire_text: '',
   email_footer_text: '',
 };
+
+const APP_KIND_OPTIONS: Array<{ value: PlatformAppKind; label: string; urlLabel: string; urlPlaceholder: string }> = [
+  { value: 'DESKTOP', label: '桌面 app', urlLabel: '官网 URL', urlPlaceholder: 'https://example.com/download' },
+  { value: 'WEBSITE', label: '网站', urlLabel: '网站 URL', urlPlaceholder: 'https://www.example.com' },
+  { value: 'MOBILE', label: '手机 app', urlLabel: '落地页 URL', urlPlaceholder: 'https://example.com/app' },
+];
+
+function appKindLabel(kind?: PlatformAppKind): string {
+  return APP_KIND_OPTIONS.find((item) => item.value === kind)?.label || '网站';
+}
 
 function normalizeDomain(domain: string): string {
   return domain.trim().toLowerCase();
@@ -127,6 +140,7 @@ export default function AppTenants() {
     setForm({
       slug: app.slug,
       name: app.name,
+      kind: app.kind || 'WEBSITE',
       status: app.status,
       brand_name: app.settings?.brand_name || '',
       app_url: app.settings?.app_url || '',
@@ -197,6 +211,8 @@ export default function AppTenants() {
     };
   };
 
+  const selectedKind = APP_KIND_OPTIONS.find((item) => item.value === form.kind) || APP_KIND_OPTIONS[1];
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!form.name.trim()) {
@@ -213,6 +229,7 @@ export default function AppTenants() {
     try {
       const payload = {
         name: form.name.trim(),
+        kind: form.kind,
         status: form.status,
         domains: buildDomains(),
         settings: buildSettings(),
@@ -310,6 +327,7 @@ export default function AppTenants() {
                 <div>
                   <h3>{app.name}</h3>
                   <p><code>{app.slug}</code></p>
+                  <p>{appKindLabel(app.kind)}</p>
                   {!!app.slug_aliases?.length && <p>{app.slug_aliases.map((alias) => `/${alias}/v1`).join(' · ')}</p>}
                 </div>
                 <span className={`status-tag ${app.status === 'ACTIVE' ? 'success' : 'warning'}`}>
@@ -345,6 +363,22 @@ export default function AppTenants() {
 
             <form onSubmit={handleSubmit} className="platform-form-grid">
               <div className="form-group platform-form-span-2">
+                <label>应用种类</label>
+                <div className="app-kind-segmented" role="radiogroup" aria-label="应用种类">
+                  {APP_KIND_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`app-kind-option ${form.kind === option.value ? 'active' : ''}`}
+                      aria-pressed={form.kind === option.value}
+                      onClick={() => setForm((prev) => ({ ...prev, kind: option.value }))}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="form-group platform-form-span-2">
                 <label>应用名称</label>
                 <input
                   value={form.name}
@@ -361,30 +395,34 @@ export default function AppTenants() {
                   placeholder="根据应用名称自动生成"
                 />
               </div>
-              <div className="form-group">
-                <label>状态</label>
-                <select
-                  value={form.status}
-                  onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value as 'ACTIVE' | 'INACTIVE' }))}
-                >
-                  <option value="ACTIVE">ACTIVE</option>
-                  <option value="INACTIVE">INACTIVE</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label>品牌名称</label>
-                <input
-                  value={form.brand_name}
-                  onChange={(event) => setForm((prev) => ({ ...prev, brand_name: event.target.value }))}
-                  placeholder="例如: Demo App"
-                />
-              </div>
+              {editingId && (
+                <>
+                  <div className="form-group">
+                    <label>状态</label>
+                    <select
+                      value={form.status}
+                      onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value as 'ACTIVE' | 'INACTIVE' }))}
+                    >
+                      <option value="ACTIVE">ACTIVE</option>
+                      <option value="INACTIVE">INACTIVE</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>品牌名称</label>
+                    <input
+                      value={form.brand_name}
+                      onChange={(event) => setForm((prev) => ({ ...prev, brand_name: event.target.value }))}
+                      placeholder="例如: Demo App"
+                    />
+                  </div>
+                </>
+              )}
               <div className="form-group platform-form-span-2">
-                <label>应用 URL</label>
+                <label>{selectedKind.urlLabel}</label>
                 <input
                   value={form.app_url}
                   onChange={(event) => setForm((prev) => ({ ...prev, app_url: event.target.value }))}
-                  placeholder="https://app.example.com"
+                  placeholder={selectedKind.urlPlaceholder}
                 />
               </div>
               {editingId && (

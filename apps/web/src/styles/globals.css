@@ -1198,6 +1198,32 @@ code {
   gap: 10px 12px;
 }
 
+.app-kind-segmented {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.app-kind-option {
+  min-height: 40px;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast), color var(--transition-fast);
+}
+
+.app-kind-option:hover,
+.app-kind-option.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
 .video-proxy-settings-card {
   display: flex;
   align-items: center;
@@ -7512,6 +7538,10 @@ table.table-sticky th {
   }
 
   .platform-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .app-kind-segmented {
     grid-template-columns: 1fr;
   }
 

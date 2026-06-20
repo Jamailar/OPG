@@ -29,6 +29,12 @@ enum AppStatus {
   INACTIVE
 }
 
+enum AppKind {
+  DESKTOP
+  WEBSITE
+  MOBILE
+}
+
 enum AppDomainType {
   BUSINESS_ADMIN
   PLATFORM_ADMIN
@@ -42,6 +48,7 @@ model App {
   id        String     @id @default(uuid())
   slug      String     @unique
   name      String
+  kind      AppKind    @default(WEBSITE)
   status    AppStatus  @default(ACTIVE)
   createdAt DateTime   @default(now()) @map("created_at")
   updatedAt DateTime   @updatedAt @map("updated_at")

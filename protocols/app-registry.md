@@ -11,6 +11,7 @@ app
   id
   slug
   name
+  kind              # DESKTOP / WEBSITE / MOBILE
   status
   ownerUserId
 
@@ -79,4 +80,3 @@ app_domain
 - 密钥 hash：`bcrypt` 或 Node crypto。
 - JWT/JWS：`jose`。
 - 数据持久化：Prisma/PostgreSQL。
-

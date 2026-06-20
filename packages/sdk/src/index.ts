@@ -58,6 +58,15 @@ export type OpgDatabaseExecuteInput = {
   confirm?: string | boolean;
 };
 
+export type OpgAppKind = 'DESKTOP' | 'WEBSITE' | 'MOBILE';
+
+export type OpgPlatformAppInput = Record<string, unknown> & {
+  name?: string;
+  slug?: string;
+  kind?: OpgAppKind;
+  status?: 'ACTIVE' | 'INACTIVE';
+};
+
 export type OpgSchemaTableInput = {
   slug?: string;
   name?: string;
@@ -125,8 +134,8 @@ export type OpgPlatformClient = {
   apps: {
     list(query?: { includeInactive?: boolean; include_inactive?: boolean }): Promise<Record<string, unknown>>;
     get(appId: string): Promise<Record<string, unknown>>;
-    create(input: Record<string, unknown>): Promise<Record<string, unknown>>;
-    update(appId: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+    create(input: OpgPlatformAppInput): Promise<Record<string, unknown>>;
+    update(appId: string, input: OpgPlatformAppInput): Promise<Record<string, unknown>>;
     stats(appId: string): Promise<Record<string, unknown>>;
     ai: {
       modelRoutes(appId: string): Promise<Record<string, unknown>>;

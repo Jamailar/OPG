@@ -34,7 +34,7 @@ opg login
 创建 app 后，再做 app 级 SDK 授权：
 
 ```bash
-opg app create --name "Demo App" --slug demo
+opg app create --kind website --name "Demo App" --slug demo
 opg login --app demo
 ```
 
@@ -69,7 +69,7 @@ node scripts/verify-app-construction-plane.mjs
 opg init --base-url https://opg.ziz.hk
 opg login
 opg app list
-opg app create --name "Demo App" --slug demo
+opg app create --kind website --name "Demo App" --slug demo
 opg login --app demo
 opg smoke
 opg db smoke
@@ -80,8 +80,8 @@ opg codex install
 
 ```bash
 opg app list
-opg app create --name "Demo App" --slug demo
-opg app create --json '{"name":"Demo App","slug":"demo"}'
+opg app create --kind website --name "Demo App" --slug demo
+opg app create --json '{"kind":"WEBSITE","name":"Demo App","slug":"demo"}'
 opg app use demo
 ```
 

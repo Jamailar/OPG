@@ -169,7 +169,7 @@ npm run web:dev
 ```bash
 npx -y @jamba/opg-cli init --base-url http://localhost:3000
 npx -y @jamba/opg-cli login
-npx -y @jamba/opg-cli app create --name "Your App" --slug your-app
+npx -y @jamba/opg-cli app create --kind website --name "Your App" --slug your-app
 npx -y @jamba/opg-cli login --app your-app
 npx -y @jamba/opg-cli codex install
 ```
@@ -558,7 +558,7 @@ npm run cli:build
 npm install opg-sdk
 npx -y @jamba/opg-cli init --base-url https://api.example.com
 npx -y @jamba/opg-cli login
-npx -y @jamba/opg-cli app create --name "Your App" --slug your-app
+npx -y @jamba/opg-cli app create --kind website --name "Your App" --slug your-app
 npx -y @jamba/opg-cli login --app your-app
 npx -y @jamba/opg-cli codex install
 ```

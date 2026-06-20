@@ -132,7 +132,7 @@ async function initProject(flags: Record<string, string>) {
   if (!config.app) {
     console.log('OPG platform profile written.');
     console.log('Next: opg login');
-    console.log('Then: opg app create --name "Demo App" --slug demo');
+    console.log('Then: opg app create --kind website --name "Demo App" --slug demo');
     return;
   }
 
@@ -220,7 +220,7 @@ async function loginProject(flags: Record<string, string>) {
         platformRefreshToken: token.auth.platform_refresh_token,
       });
       console.log(`OPG platform login saved (${profile}).`);
-      console.log('Next: opg app list or opg app create --name "Demo App" --slug demo');
+      console.log('Next: opg app list or opg app create --kind website --name "Demo App" --slug demo');
     } else {
       await writeLocalLoginCredentials({
         baseUrl: config.baseUrl,
@@ -603,10 +603,11 @@ async function runAppCommand(commandArgs: string[]) {
       : {
           name: flags.name || flags.slug || '',
           slug: flags.slug || '',
+          kind: normalizeAppKindFlag(flags.kind || 'website'),
           status: flags.status || 'ACTIVE',
         };
     if (!payload.name || !payload.slug) {
-      throw new Error('Missing app name or slug. Use: opg app create --name "Demo App" --slug demo');
+      throw new Error('Missing app name or slug. Use: opg app create --kind website --name "Demo App" --slug demo');
     }
     const created = await client.apps.create(payload);
     const app = pickAppPayload(created);
@@ -827,7 +828,7 @@ async function startMcpServer() {
       title: 'Create OPG Platform App',
       description: 'Create a tenant app from the global OPG platform control plane. Requires OPG_PLATFORM_TOKEN with platform admin access.',
       inputSchema: {
-        payload: z.record(z.unknown()).describe('App creation payload accepted by POST /api/v1/platform-admin/apps.'),
+        payload: z.record(z.unknown()).describe('App creation payload accepted by POST /api/v1/platform-admin/apps. Include kind as DESKTOP, WEBSITE, or MOBILE.'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
@@ -1682,9 +1683,17 @@ function requireAppConfig(config: CliConfig, message: string): CliConfig {
 function parseJsonPayload(flags: Record<string, string>) {
   const raw = flags.json || flags.body || '';
   if (!raw) {
-    throw new Error('Missing JSON payload. Use --json \'{"name":"Demo","slug":"demo"}\'.');
+    throw new Error('Missing JSON payload. Use --json \'{"kind":"WEBSITE","name":"Demo","slug":"demo"}\'.');
   }
   return JSON.parse(raw);
+}
+
+function normalizeAppKindFlag(value: unknown): 'DESKTOP' | 'WEBSITE' | 'MOBILE' {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw || raw === 'website' || raw === 'web' || raw === 'site') return 'WEBSITE';
+  if (raw === 'desktop' || raw === 'desktop-app') return 'DESKTOP';
+  if (raw === 'mobile' || raw === 'mobile-app' || raw === 'phone') return 'MOBILE';
+  throw new Error('Invalid app kind. Use --kind desktop, --kind website, or --kind mobile.');
 }
 
 function parseColumnSpecs(value: string) {
@@ -2173,19 +2182,20 @@ Examples:
 
 Usage:
   opg app list
-  opg app create --name "Demo App" --slug demo
-  opg app create --json '{"name":"Demo App","slug":"demo"}'
+  opg app create --kind website --name "Demo App" --slug demo
+  opg app create --json '{"kind":"WEBSITE","name":"Demo App","slug":"demo"}'
   opg app use <slug>
 
 Options:
   --base-url <url>       OPG gateway base URL.
   --platform-token <jwt> Platform admin token. Usually loaded from opg login.
   --profile <name>       Local credential profile name.
+  --kind <type>          App type: desktop, website, or mobile. Default: website.
   --include-inactive     Include inactive apps. Default: true
 
 Examples:
   opg app list
-  opg app create --name "Demo App" --slug demo
+  opg app create --kind website --name "Demo App" --slug demo
   opg app use demo
 `);
     return;
@@ -2322,7 +2332,7 @@ Usage:
 Usage:
   opg platform apps list
   opg platform apps get --app-id <id>
-  opg platform apps create --json '{"name":"Demo","slug":"demo"}'
+  opg platform apps create --json '{"kind":"WEBSITE","name":"Demo","slug":"demo"}'
   opg platform apps update --app-id <id> --json '{...}'
   opg platform feedbacks list --app-id <id>
   opg platform feedbacks get --app-id <id> --feedback-id <id>
@@ -2419,7 +2429,7 @@ Core commands:
 Common flow:
   opg init --base-url https://opg.example.com
   opg login
-  opg app create --name "Demo App" --slug demo
+  opg app create --kind website --name "Demo App" --slug demo
   opg login --app demo
   opg db smoke
   opg schema table create --name customers --columns email:text --apply

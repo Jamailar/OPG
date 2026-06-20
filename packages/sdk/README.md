@@ -15,7 +15,7 @@ const models = await opg.ai.models();
 ```bash
 npx -y @jamba/opg-cli init --base-url https://api.example.com
 npx -y @jamba/opg-cli login
-npx -y @jamba/opg-cli app create --name "Your App" --slug your-app
+npx -y @jamba/opg-cli app create --kind website --name "Your App" --slug your-app
 npx -y @jamba/opg-cli login --app your-app
 ```
 
@@ -48,6 +48,7 @@ const platform = createOpgPlatformClient({
 await platform.apps.create({
   name: "Demo App",
   slug: "demo",
+  kind: "WEBSITE",
 });
 
 await platform.runtimeSettings.update({

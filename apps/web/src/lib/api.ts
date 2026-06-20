@@ -618,6 +618,8 @@ export interface PlatformAppDomainInput {
   is_primary?: boolean;
 }
 
+export type PlatformAppKind = 'DESKTOP' | 'WEBSITE' | 'MOBILE';
+
 export interface PlatformAppSettingsInput {
   app_url?: string;
   brand_name?: string;
@@ -655,6 +657,7 @@ export interface PlatformAppItem {
   slug: string;
   slug_aliases?: string[];
   name: string;
+  kind: PlatformAppKind;
   status: 'ACTIVE' | 'INACTIVE';
   created_at?: string;
   updated_at?: string;
@@ -3521,6 +3524,7 @@ export const platformApi = {
     slug: string;
     slug_aliases?: string[];
     name: string;
+    kind?: PlatformAppKind;
     status?: 'ACTIVE' | 'INACTIVE';
     domains?: PlatformAppDomainInput[];
     settings?: PlatformAppSettingsInput;
@@ -3533,6 +3537,7 @@ export const platformApi = {
     appId: string,
     payload: {
       name?: string;
+      kind?: PlatformAppKind;
       slug_aliases?: string[];
       status?: 'ACTIVE' | 'INACTIVE';
       domains?: PlatformAppDomainInput[];

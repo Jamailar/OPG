@@ -9,7 +9,7 @@ npm install -g @jamba/opg-cli
 opg --help
 opg init --base-url https://api.example.com
 opg login
-opg app create --name "Demo App" --slug demo
+opg app create --kind website --name "Demo App" --slug demo
 opg login --app demo
 opg smoke
 opg db smoke
@@ -44,9 +44,9 @@ App SDK operations stay app-scoped. Global operations use the platform token:
 
 ```bash
 opg app list
-opg app create --name "Demo App" --slug demo
+opg app create --kind website --name "Demo App" --slug demo
 opg platform apps list
-opg platform apps create --json '{"name":"Demo App","slug":"demo"}'
+opg platform apps create --json '{"kind":"WEBSITE","name":"Demo App","slug":"demo"}'
 opg platform runtime get
 opg platform runtime update --json '{"api_base_url":"https://opg.example.com"}'
 opg platform feedbacks list --app-id <app-id> --status open
