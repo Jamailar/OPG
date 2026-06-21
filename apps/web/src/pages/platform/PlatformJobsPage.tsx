@@ -22,6 +22,21 @@ function statusClass(status?: string | null) {
   return 'warning';
 }
 
+const STATUS_LABELS: Record<string, string> = {
+  queued: '排队中',
+  running: '运行中',
+  retrying: '重试中',
+  succeeded: '成功',
+  failed: '失败',
+  cancelled: '已取消',
+  expired: '已过期',
+};
+
+function formatStatus(status?: string | null) {
+  const key = String(status || '').toLowerCase();
+  return STATUS_LABELS[key] || status || '-';
+}
+
 function progressValue(task: PlatformTaskItem) {
   const parsed = Number(task.progress ?? 0);
   if (!Number.isFinite(parsed)) return 0;
@@ -122,7 +137,7 @@ export default function PlatformJobsPage() {
     <div className="platform-page platform-jobs-page">
       <div className="platform-page-head">
         <div>
-          <h1>Jobs</h1>
+          <h1>任务</h1>
           <p>AI、视频、存储和后台批处理任务。</p>
         </div>
         <div className="btn-group">
@@ -147,7 +162,7 @@ export default function PlatformJobsPage() {
           >
             {STATUS_OPTIONS.map((item) => (
               <option key={item || 'all'} value={item}>
-                {item || 'all'}
+                {item ? formatStatus(item) : '全部'}
               </option>
             ))}
           </select>
@@ -158,7 +173,7 @@ export default function PlatformJobsPage() {
             onKeyDown={(event) => {
               if (event.key === 'Enter') void loadTasks();
             }}
-            placeholder="module"
+            placeholder="模块"
           />
           <input
             className="platform-filter-input"
@@ -167,7 +182,7 @@ export default function PlatformJobsPage() {
             onKeyDown={(event) => {
               if (event.key === 'Enter') void loadTasks();
             }}
-            placeholder="request id"
+            placeholder="请求 ID"
           />
           <button className="btn btn-secondary btn-sm" onClick={loadTasks} disabled={loading} type="button">
             查询
@@ -182,7 +197,7 @@ export default function PlatformJobsPage() {
                 <th>任务</th>
                 <th>进度</th>
                 <th>队列</th>
-                <th>Worker</th>
+                <th>工作器</th>
                 <th>更新时间</th>
                 <th>操作</th>
               </tr>
@@ -195,7 +210,7 @@ export default function PlatformJobsPage() {
                   onClick={() => selectTask(item.id)}
                 >
                   <td>
-                    <span className={`status-tag ${statusClass(item.status)}`}>{item.status}</span>
+                    <span className={`status-tag ${statusClass(item.status)}`}>{formatStatus(item.status)}</span>
                   </td>
                   <td>
                     <strong>{item.module}</strong>
@@ -240,26 +255,26 @@ export default function PlatformJobsPage() {
               <h3>{selectedTask.module} / {selectedTask.action}</h3>
               <p><code>{selectedTask.id}</code></p>
             </div>
-            <span className={`status-tag ${statusClass(selectedTask.status)}`}>{selectedTask.status}</span>
+            <span className={`status-tag ${statusClass(selectedTask.status)}`}>{formatStatus(selectedTask.status)}</span>
           </div>
           {detailLoading ? (
             <div className="loading">加载中...</div>
           ) : (
             <div className="grid">
               <div className="user-info-item">
-                <label>Request</label>
+                <label>请求</label>
                 <div><code>{selectedTask.request_id || '-'}</code></div>
               </div>
               <div className="user-info-item">
-                <label>Source</label>
+                <label>来源</label>
                 <div>{selectedTask.source_type || '-'}{selectedTask.source_id ? ` / ${selectedTask.source_id}` : ''}</div>
               </div>
               <div className="user-info-item">
-                <label>Created</label>
+                <label>创建时间</label>
                 <div>{formatTime(selectedTask.created_at)}</div>
               </div>
               <div className="user-info-item">
-                <label>Error</label>
+                <label>错误</label>
                 <div>{selectedTask.error_code || selectedTask.error_message || '-'}</div>
               </div>
             </div>
@@ -269,7 +284,7 @@ export default function PlatformJobsPage() {
             <table className="table">
               <thead>
                 <tr>
-                  <th>Seq</th>
+                  <th>序号</th>
                   <th>时间</th>
                   <th>类型</th>
                   <th>阶段</th>
@@ -293,7 +308,7 @@ export default function PlatformJobsPage() {
             <table className="table">
               <thead>
                 <tr>
-                  <th>Seq</th>
+                  <th>序号</th>
                   <th>流</th>
                   <th>日志</th>
                   <th>时间</th>

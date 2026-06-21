@@ -47,22 +47,22 @@ const navItems = [
   {
     key: 'runtime',
     icon: 'runtime',
-    label: 'Runtime',
-    desc: '模块、模板与 Registry',
+    label: '运行时',
+    desc: '模块、模板与注册表',
     path: '/platform-admin/runtime',
   },
   {
     key: 'connectors',
     icon: 'api',
-    label: 'Connectors',
+    label: '连接器',
     desc: '自定义上游与动作',
     path: '/platform-admin/connectors',
   },
   {
     key: 'jobs',
     icon: 'jobs',
-    label: 'Jobs',
-    desc: '后台任务与 Worker',
+    label: '任务',
+    desc: '后台任务与工作器',
     path: '/platform-admin/jobs',
   },
   {

@@ -21,6 +21,21 @@ function statusClass(status?: string | null) {
   return 'muted';
 }
 
+const STATUS_LABELS: Record<string, string> = {
+  active: '活跃',
+  succeeded: '成功',
+  warning: '告警',
+  retrying: '重试中',
+  unhealthy: '异常',
+  failed: '失败',
+  running: '运行中',
+};
+
+function formatStatus(status?: string | null) {
+  const key = String(status || '').toLowerCase();
+  return STATUS_LABELS[key] || status || '-';
+}
+
 function formatTime(value?: string | null) {
   return value ? new Date(value).toLocaleString() : '-';
 }
@@ -64,7 +79,7 @@ export default function PlatformRuntimePage() {
       setApps(nextAppItems);
       setSelectedAppId((current) => (current && nextAppItems.some((item) => item.id === current) ? current : nextAppItems[0]?.id || ''));
     } catch (error: unknown) {
-      setMessage(pickApiErrorMessage(error, '加载 Runtime 失败'));
+      setMessage(pickApiErrorMessage(error, '加载运行时失败'));
     } finally {
       setLoading(false);
     }
@@ -80,7 +95,7 @@ export default function PlatformRuntimePage() {
       const payload = pickApiData<PlatformAppRuntimeOverview>(await platformApi.getAppRuntimeOverview(appId, { limit: 50 }));
       setAppOverview(payload || null);
     } catch (error: unknown) {
-      setMessage(pickApiErrorMessage(error, '加载应用 Runtime 失败'));
+      setMessage(pickApiErrorMessage(error, '加载应用运行时失败'));
     } finally {
       setAppLoading(false);
     }
@@ -145,14 +160,14 @@ export default function PlatformRuntimePage() {
     <div className="platform-page">
       <div className="platform-page-head">
         <div>
-          <h1>Runtime</h1>
+          <h1>运行时</h1>
         </div>
         <div className="btn-group">
           <span className={`status-tag ${taskRuntime?.queue?.backend === 'bullmq' && taskRuntime.queue.available ? 'success' : 'warning'}`}>
             {taskRuntime?.queue?.backend || 'db'}
           </span>
           <button className="btn btn-secondary btn-sm" type="button" onClick={queueGlobalRefresh} disabled={Boolean(actionLoading)}>
-            {actionLoading === 'refresh-all' ? '入队中...' : '刷新 Registry'}
+            {actionLoading === 'refresh-all' ? '入队中...' : '刷新注册表'}
           </button>
           <button className="btn btn-secondary btn-sm" type="button" onClick={loadGlobal} disabled={loading}>
             {loading ? '刷新中...' : '刷新'}
@@ -164,19 +179,19 @@ export default function PlatformRuntimePage() {
 
       <div className="platform-stats-grid compact">
         <div className="platform-stat-card">
-          <span>Apps</span>
+          <span>应用</span>
           <strong>{toNumber(appStats.total)}</strong>
         </div>
         <div className="platform-stat-card">
-          <span>Active</span>
+          <span>活跃</span>
           <strong>{toNumber(appStats.active)}</strong>
         </div>
         <div className="platform-stat-card">
-          <span>Templates</span>
+          <span>模板</span>
           <strong>{overview?.templates?.available || templates.length}</strong>
         </div>
         <div className="platform-stat-card">
-          <span>Handlers</span>
+          <span>处理器</span>
           <strong>{(taskRuntime as any)?.registered_handlers?.length || 0}</strong>
         </div>
       </div>
@@ -184,7 +199,7 @@ export default function PlatformRuntimePage() {
       <div className="platform-grid-two">
         <section className="card">
           <div className="platform-section-head">
-            <h3>Module Status</h3>
+            <h3>模块状态</h3>
           </div>
           <div className="platform-api-table-wrap">
             <table className="table">
@@ -197,7 +212,7 @@ export default function PlatformRuntimePage() {
               <tbody>
                 {(overview?.modules?.by_status || []).map((item) => (
                   <tr key={item.status}>
-                    <td><span className={`status-tag ${statusClass(item.status)}`}>{item.status}</span></td>
+                    <td><span className={`status-tag ${statusClass(item.status)}`}>{formatStatus(item.status)}</span></td>
                     <td>{toNumber(item.count)}</td>
                   </tr>
                 ))}
@@ -209,7 +224,7 @@ export default function PlatformRuntimePage() {
 
         <section className="card">
           <div className="platform-section-head">
-            <h3>Categories</h3>
+            <h3>分类概览</h3>
           </div>
           <div className="platform-api-table-wrap">
             <table className="table">
@@ -265,8 +280,8 @@ export default function PlatformRuntimePage() {
                 <th>分类</th>
                 <th>状态</th>
                 <th>资源</th>
-                <th>24h Runs</th>
-                <th>24h Failures</th>
+                <th>24h 运行</th>
+                <th>24h 失败</th>
                 <th>质量</th>
                 <th>更新</th>
               </tr>
@@ -279,7 +294,7 @@ export default function PlatformRuntimePage() {
                     <div className="tenant-analytics-table-sub">{item.module_key}</div>
                   </td>
                   <td>{item.category}</td>
-                  <td><span className={`status-tag ${statusClass(item.status)}`}>{item.status}</span></td>
+                  <td><span className={`status-tag ${statusClass(item.status)}`}>{formatStatus(item.status)}</span></td>
                   <td>{toNumber(item.resource_count)}</td>
                   <td>{toNumber(item.run_count_24h)}</td>
                   <td>{toNumber(item.failure_count_24h)}</td>
@@ -296,7 +311,7 @@ export default function PlatformRuntimePage() {
 
       <section className="card">
         <div className="platform-section-head">
-          <h3>Templates</h3>
+          <h3>运行模板</h3>
         </div>
         <div className="platform-api-table-wrap">
           <table className="table">
