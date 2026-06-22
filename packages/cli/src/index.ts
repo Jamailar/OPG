@@ -827,6 +827,76 @@ async function runPlatformCommand(commandArgs: string[]) {
     }
   }
 
+  if (resource === 'forms' || resource === 'form') {
+    const appId = requirePlatformAppId(flags);
+    const formId = flags.formId || flags['form-id'] || flags.form || '';
+    const questionId = flags.questionId || flags['question-id'] || '';
+    if (action === 'list') {
+      printJson(await client.apps.forms.list(appId));
+      return;
+    }
+    if (action === 'get') {
+      if (!formId) throw new Error('Missing form id. Use: opg platform forms get --app-id <id> --form-id <id>');
+      printJson(await client.apps.forms.get(appId, formId));
+      return;
+    }
+    if (action === 'create') {
+      printJson(await client.apps.forms.create(appId, parseJsonPayload(flags)));
+      return;
+    }
+    if (action === 'update') {
+      if (!formId) throw new Error('Missing form id. Use: opg platform forms update --app-id <id> --form-id <id> --json {...}');
+      printJson(await client.apps.forms.update(appId, formId, parseJsonPayload(flags)));
+      return;
+    }
+    if (action === 'delete') {
+      if (!formId) throw new Error('Missing form id. Use: opg platform forms delete --app-id <id> --form-id <id>');
+      printJson(await client.apps.forms.delete(appId, formId));
+      return;
+    }
+    if (action === 'publish') {
+      if (!formId) throw new Error('Missing form id. Use: opg platform forms publish --app-id <id> --form-id <id>');
+      printJson(await client.apps.forms.publish(appId, formId));
+      return;
+    }
+    if (action === 'responses') {
+      if (!formId) throw new Error('Missing form id. Use: opg platform forms responses --app-id <id> --form-id <id>');
+      printJson(await client.apps.forms.responses(appId, formId, parseQueryPayload(flags)));
+      return;
+    }
+    if (action === 'metrics') {
+      if (!formId) throw new Error('Missing form id. Use: opg platform forms metrics --app-id <id> --form-id <id>');
+      printJson(await client.apps.forms.metrics(appId, formId));
+      return;
+    }
+    if (action === 'question-create') {
+      if (!formId) throw new Error('Missing form id. Use: opg platform forms question-create --app-id <id> --form-id <id> --json {...}');
+      printJson(await client.apps.forms.createQuestion(appId, formId, parseJsonPayload(flags)));
+      return;
+    }
+    if (action === 'question-update') {
+      if (!formId || !questionId) {
+        throw new Error('Missing ids. Use: opg platform forms question-update --app-id <id> --form-id <id> --question-id <id> --json {...}');
+      }
+      printJson(await client.apps.forms.updateQuestion(appId, formId, questionId, parseJsonPayload(flags)));
+      return;
+    }
+    if (action === 'question-delete') {
+      if (!formId || !questionId) {
+        throw new Error('Missing ids. Use: opg platform forms question-delete --app-id <id> --form-id <id> --question-id <id>');
+      }
+      printJson(await client.apps.forms.deleteQuestion(appId, formId, questionId));
+      return;
+    }
+    if (action === 'question-reorder') {
+      if (!formId) throw new Error('Missing form id. Use: opg platform forms question-reorder --app-id <id> --form-id <id> --question-ids <a,b>');
+      const questionIds = String(flags.questionIds || flags['question-ids'] || '').split(',').map((item) => item.trim()).filter(Boolean);
+      if (!questionIds.length) throw new Error('Missing question ids. Use --question-ids <a,b>');
+      printJson(await client.apps.forms.reorderQuestions(appId, formId, questionIds));
+      return;
+    }
+  }
+
   if (resource === 'notifications' || resource === 'notification') {
     const subject = action;
     const subAction = positionalArgs(commandArgs.slice(2))[0] || 'list';
@@ -1696,6 +1766,136 @@ async function startMcpServer() {
   );
 
   registerTool(
+    'opg_platform_app_forms_list',
+    {
+      title: 'List OPG App Forms',
+      description: 'List built-in and custom forms for a tenant app, including user source and NPS forms.',
+      inputSchema: { appId: z.string().min(1) },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ appId }: any) => toToolResult(await platformClient.apps.forms.list(appId)),
+  );
+
+  registerTool(
+    'opg_platform_app_form_get',
+    {
+      title: 'Get OPG App Form',
+      description: 'Read one form with questions, logic, actions, versions, and metrics.',
+      inputSchema: { appId: z.string().min(1), formId: z.string().min(1) },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ appId, formId }: any) => toToolResult(await platformClient.apps.forms.get(appId, formId)),
+  );
+
+  registerTool(
+    'opg_platform_app_form_create',
+    {
+      title: 'Create OPG App Form',
+      description: 'Create a custom form draft for a tenant app.',
+      inputSchema: { appId: z.string().min(1), payload: z.record(z.unknown()) },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ appId, payload }: any) => toToolResult(await platformClient.apps.forms.create(appId, payload)),
+  );
+
+  registerTool(
+    'opg_platform_app_form_update',
+    {
+      title: 'Update OPG App Form',
+      description: 'Update form header copy, style, settings, variables, endings, or notification config.',
+      inputSchema: { appId: z.string().min(1), formId: z.string().min(1), payload: z.record(z.unknown()) },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ appId, formId, payload }: any) => toToolResult(await platformClient.apps.forms.update(appId, formId, payload)),
+  );
+
+  registerTool(
+    'opg_platform_app_form_publish',
+    {
+      title: 'Publish OPG App Form',
+      description: 'Publish the current form draft into a versioned manifest used by hosted embeds.',
+      inputSchema: { appId: z.string().min(1), formId: z.string().min(1) },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ appId, formId }: any) => toToolResult(await platformClient.apps.forms.publish(appId, formId)),
+  );
+
+  registerTool(
+    'opg_platform_app_form_responses_list',
+    {
+      title: 'List OPG App Form Responses',
+      description: 'List recent responses for one tenant app form.',
+      inputSchema: {
+        appId: z.string().min(1),
+        formId: z.string().min(1),
+        page: z.number().int().min(1).default(1),
+        pageSize: z.number().int().min(1).max(100).default(20),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ appId, formId, page, pageSize }: any) => toToolResult(await platformClient.apps.forms.responses(appId, formId, {
+      page,
+      page_size: pageSize,
+    })),
+  );
+
+  registerTool(
+    'opg_platform_app_form_metrics_get',
+    {
+      title: 'Get OPG App Form Metrics',
+      description: 'Read response count, user count, average score, and NPS metrics for one form.',
+      inputSchema: { appId: z.string().min(1), formId: z.string().min(1) },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ appId, formId }: any) => toToolResult(await platformClient.apps.forms.metrics(appId, formId)),
+  );
+
+  registerTool(
+    'opg_platform_app_form_question_create',
+    {
+      title: 'Create OPG App Form Question',
+      description: 'Add a question block to a tenant app form.',
+      inputSchema: { appId: z.string().min(1), formId: z.string().min(1), payload: z.record(z.unknown()) },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ appId, formId, payload }: any) => toToolResult(await platformClient.apps.forms.createQuestion(appId, formId, payload)),
+  );
+
+  registerTool(
+    'opg_platform_app_form_question_update',
+    {
+      title: 'Update OPG App Form Question',
+      description: 'Update a form question block by id.',
+      inputSchema: { appId: z.string().min(1), formId: z.string().min(1), questionId: z.string().min(1), payload: z.record(z.unknown()) },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ appId, formId, questionId, payload }: any) =>
+      toToolResult(await platformClient.apps.forms.updateQuestion(appId, formId, questionId, payload)),
+  );
+
+  registerTool(
+    'opg_platform_app_form_question_delete',
+    {
+      title: 'Delete OPG App Form Question',
+      description: 'Delete a form question block by id.',
+      inputSchema: { appId: z.string().min(1), formId: z.string().min(1), questionId: z.string().min(1) },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ appId, formId, questionId }: any) => toToolResult(await platformClient.apps.forms.deleteQuestion(appId, formId, questionId)),
+  );
+
+  registerTool(
+    'opg_platform_app_form_questions_reorder',
+    {
+      title: 'Reorder OPG App Form Questions',
+      description: 'Persist form question ordering with a complete ordered id list.',
+      inputSchema: { appId: z.string().min(1), formId: z.string().min(1), questionIds: z.array(z.string().min(1)).min(1) },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ appId, formId, questionIds }: any) => toToolResult(await platformClient.apps.forms.reorderQuestions(appId, formId, questionIds)),
+  );
+
+  registerTool(
     'opg_platform_app_notification_channels_list',
     {
       title: 'List OPG App Notification Channels',
@@ -2124,6 +2324,31 @@ async function startMcpServer() {
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async () => toToolResult(await client.data.schema()),
+  );
+
+  registerTool(
+    'opg_form_manifest_get',
+    {
+      title: 'Get OPG Hosted Form Manifest',
+      description: 'Read the published hosted form manifest for the configured OPG app.',
+      inputSchema: { formKey: z.string().min(1).describe('Form key, for example user_source or nps.') },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ formKey }: any) => toToolResult(await client.forms.manifest(formKey)),
+  );
+
+  registerTool(
+    'opg_form_response_submit',
+    {
+      title: 'Submit OPG Hosted Form Response',
+      description: 'Submit answers to a hosted form for the configured OPG app.',
+      inputSchema: {
+        formKey: z.string().min(1).describe('Form key, for example user_source or nps.'),
+        payload: z.record(z.unknown()).describe('Response payload, usually { answers, hidden, metadata }.'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    },
+    async ({ formKey, payload }: any) => toToolResult(await client.forms.submit(formKey, payload)),
   );
 
   registerTool(
@@ -3156,6 +3381,13 @@ Usage:
   opg platform feedbacks update --app-id <id> --feedback-id <id> --json '{...}'
   opg platform feedbacks comment --app-id <id> --feedback-id <id> --json '{...}'
   opg platform feedbacks review --app-id <id> --feedback-id <id> --json '{...}'
+  opg platform forms list --app-id <id>
+  opg platform forms get --app-id <id> --form-id <id>
+  opg platform forms create --app-id <id> --json '{"name":"Onboarding"}'
+  opg platform forms update --app-id <id> --form-id <id> --json '{...}'
+  opg platform forms publish --app-id <id> --form-id <id>
+  opg platform forms responses --app-id <id> --form-id <id>
+  opg platform forms question-create --app-id <id> --form-id <id> --json '{...}'
   opg platform notifications channels list --app-id <id>
   opg platform notifications channels create --app-id <id> --json '{...}'
   opg platform notifications channels test --app-id <id> --channel-id <id>
@@ -3198,6 +3430,8 @@ Options:
   --base-url <url>       OPG gateway base URL.
   --platform-token <jwt> Platform admin token. Usually loaded from opg login.
   --app-id <id>          Target tenant app id for app data operations.
+  --form-id <id>         Form id or key for form commands.
+  --question-id <id>     Question id for form question commands.
   --connector <id>       Connector id or slug for connector commands.
   --credential <id>      Credential id or slug for connector credential commands.
   --action-id <id>       Connector action id or slug for invoke/run commands.
@@ -3209,6 +3443,7 @@ Options:
 Examples:
   opg platform apps list
   opg platform feedbacks list --app-id <id>
+  opg platform forms list --app-id <id>
   opg platform runtime overview
   opg platform runtime apply-template --app-id <id> --template-key ai-video-app
   opg platform request --path /storage/providers --method GET

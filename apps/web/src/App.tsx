@@ -11,6 +11,7 @@ import PlatformDashboard from '@/pages/platform/PlatformDashboard';
 import AppTenants from '@/pages/platform/AppTenants';
 import SharedApiCatalog from '@/pages/platform/SharedApiCatalog';
 import TenantWorkspace from '@/pages/platform/TenantWorkspace';
+import HostedFormShell from '@/pages/forms/HostedFormShell';
 import AiWorkspace from '@/pages/platform/AiWorkspace';
 import GlobalAiSourcesPage from '@/pages/platform/GlobalAiSourcesPage';
 import GlobalAiModelsPage from '@/pages/platform/GlobalAiModelsPage';
@@ -142,6 +143,7 @@ function App() {
           <Route path="/setup" element={<FirstRunSetup />} />
           <Route path="/sdk-login" element={<SdkLogin />} />
           <Route path="/auth/login" element={<Login />} />
+          <Route path="/:appSlug/forms/:formKey" element={<HostedFormShell />} />
           <Route path="/:appSlug" element={<AppLogin />} />
           <Route path="/:appSlug/admin/*" element={<BusinessProtectedRoute />} />
           <Route path="/admin/*" element={<BusinessProtectedRoute />} />

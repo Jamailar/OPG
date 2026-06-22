@@ -58,9 +58,10 @@ import TenantBuildDataPanel from '@/pages/platform/components/TenantBuildDataPan
 import TenantApiDocsPanel from '@/pages/platform/components/TenantApiDocsPanel';
 import TenantAnalyticsPanel from '@/pages/platform/components/TenantAnalyticsPanel';
 import AdminNotificationsPanel from '@/pages/platform/components/AdminNotificationsPanel';
+import TenantFormsPanel from '@/pages/platform/components/TenantFormsPanel';
 
 type Message = { type: 'success' | 'error'; text: string } | null;
-type WorkspaceSection = 'overview' | 'build-data' | 'analytics' | 'ai-usage' | 'logs' | 'api-docs' | 'developers' | 'admins' | 'ai-routing' | 'site' | 'email' | 'notifications' | 'feedback' | 'acquisition' | 'redeem';
+type WorkspaceSection = 'overview' | 'build-data' | 'analytics' | 'ai-usage' | 'logs' | 'api-docs' | 'developers' | 'admins' | 'ai-routing' | 'site' | 'email' | 'notifications' | 'feedback' | 'forms' | 'acquisition' | 'redeem';
 type RedeemSubPage = 'products' | 'product-create' | 'orders' | 'code-batches' | 'code-create' | 'codes' | 'redemptions';
 type ManualGrantIdentityType = 'email' | 'user_id' | 'phone';
 type AppModelCapabilityFilter = 'ALL' | PlatformAppAiModelRouteItem['model']['capability'] | 'voice_clone';
@@ -153,7 +154,7 @@ const WORKSPACE_NAV: Array<{ key: WorkspaceSection; label: string; desc: string 
   { key: 'email', label: '邮件营销', desc: '发邮件批次与触达名单' },
   { key: 'notifications', label: '通知', desc: '渠道、规则与投递' },
   { key: 'feedback', label: '用户反馈', desc: '反馈处理、积分奖励' },
-  { key: 'acquisition', label: '用户来源', desc: '来源选项与提交记录' },
+  { key: 'forms', label: '表单', desc: '用户来源、NPS 与自定义表单' },
   { key: 'redeem', label: '产品与兑换', desc: '产品、兑换码与分发运营' },
 ];
 
@@ -591,6 +592,9 @@ function resolveWorkspaceBasePath(pathname: string, appId: string): string {
 function resolveSection(pathname: string, appId: string): WorkspaceSection {
   const basePath = resolveWorkspaceBasePath(pathname, appId);
   const section = pathname.slice(basePath.length).replace(/^\/+/, '').split('/')[0] as WorkspaceSection;
+  if (section === 'acquisition') {
+    return 'forms';
+  }
   if (!section || !WORKSPACE_NAV.some((item) => item.key === section)) {
     return 'overview';
   }
@@ -824,6 +828,8 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
   const canReviewFeedback = hasAppPermission('app.feedback.review') || hasAppPermission('app.feedback.reward');
   const canRewardFeedback = hasAppPermission('app.feedback.reward');
   const canViewAcquisition = hasAppPermission('app.acquisition.read') || hasAppPermission('app.acquisition.write');
+  const canViewForms = hasAppPermission('app.forms.read') || hasAppPermission('app.forms.write') || canViewAcquisition;
+  const canManageForms = hasAppPermission('app.forms.write') || hasAppPermission('app.acquisition.write');
   const canManageProducts = hasAppPermission('app.products.write');
   const canCreateRedeemCodes = hasAppPermission('app.redeem.codes.create');
   const canVoidRedeemCodes = hasAppPermission('app.redeem.codes.void');
@@ -852,7 +858,7 @@ export default function TenantWorkspace({ appIdOverride }: TenantWorkspaceProps)
       if (item.key === 'email') return canViewEmail;
       if (item.key === 'notifications') return canViewNotifications;
       if (item.key === 'feedback') return canViewFeedback;
-      if (item.key === 'acquisition') return canViewAcquisition;
+      if (item.key === 'forms') return canViewForms;
       if (item.key === 'redeem') return canUseRedeemRead;
       return false;
     });
@@ -6308,6 +6314,7 @@ const agents = await opg.agents.list();`}</pre>
           {activeSection === 'email' && renderEmail()}
           {activeSection === 'notifications' && <AdminNotificationsPanel appId={appId} compact />}
           {activeSection === 'feedback' && renderFeedback()}
+          {activeSection === 'forms' && <TenantFormsPanel appId={appId} canWrite={canManageForms} />}
           {activeSection === 'acquisition' && renderAcquisition()}
           {activeSection === 'redeem' && renderRedeem()}
         </section>

@@ -184,6 +184,14 @@ export class PlatformAdminAccessGuard implements CanActivate {
     if (path.match(/^\/apps\/[^/]+\/acquisition(?:\/|$)/)) {
       return { kind: 'app-permission', permissions: method === 'GET' ? ['app.acquisition.read'] : ['app.acquisition.write'] };
     }
+    if (path.match(/^\/apps\/[^/]+\/forms(?:\/|$)/)) {
+      return {
+        kind: 'app-permission',
+        permissions: method === 'GET'
+          ? ['app.forms.read', 'app.acquisition.read']
+          : ['app.forms.write', 'app.acquisition.write'],
+      };
+    }
     if (path.match(/^\/apps\/[^/]+\/redeem\/packages\/[^/]+\/distribute$/)) {
       return { kind: 'app-permission', permissions: ['app.redeem.packages.distribute'] };
     }

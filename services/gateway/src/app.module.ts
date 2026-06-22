@@ -16,6 +16,7 @@ import { TenantSiteModule } from './modules/tenant-site/tenant-site.module';
 import { EmailDeliveryModule } from './modules/email-delivery/email-delivery.module';
 import { OutboundProxyModule } from './modules/outbound-proxy/outbound-proxy.module';
 import { AcquisitionModule } from './modules/acquisition/acquisition.module';
+import { AppFormsModule } from './modules/app-forms/app-forms.module';
 import { RuntimeSettingsModule } from './modules/runtime-settings/runtime-settings.module';
 import { DeveloperSdkModule } from './modules/developer-sdk/developer-sdk.module';
 import { ObservabilityModule } from './modules/observability/observability.module';
@@ -54,6 +55,7 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
     EmailDeliveryModule,
     OutboundProxyModule,
     AcquisitionModule,
+    AppFormsModule,
     RuntimeSettingsModule,
     DeveloperSdkModule,
     PlatformTasksModule,

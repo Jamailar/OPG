@@ -163,6 +163,20 @@ export type OpgPlatformClient = {
       addComment(appId: string, feedbackId: string, input: { body?: string; is_internal?: boolean }): Promise<Record<string, unknown>>;
       review(appId: string, feedbackId: string, input: { action?: string; note?: string }): Promise<Record<string, unknown>>;
     };
+    forms: {
+      list(appId: string): Promise<Record<string, unknown>>;
+      get(appId: string, formId: string): Promise<Record<string, unknown>>;
+      create(appId: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+      update(appId: string, formId: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+      delete(appId: string, formId: string): Promise<Record<string, unknown>>;
+      publish(appId: string, formId: string): Promise<Record<string, unknown>>;
+      responses(appId: string, formId: string, query?: OpgQuery): Promise<Record<string, unknown>>;
+      metrics(appId: string, formId: string): Promise<Record<string, unknown>>;
+      createQuestion(appId: string, formId: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+      updateQuestion(appId: string, formId: string, questionId: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+      deleteQuestion(appId: string, formId: string, questionId: string): Promise<Record<string, unknown>>;
+      reorderQuestions(appId: string, formId: string, questionIds: string[]): Promise<Record<string, unknown>>;
+    };
     analytics: {
       business(appId: string, query?: OpgQuery): Promise<Record<string, unknown>>;
       overview(appId: string, query?: OpgQuery): Promise<Record<string, unknown>>;
@@ -474,6 +488,10 @@ export type OpgClient = OpgClientInternals & {
       delete(id: string): Promise<Record<string, unknown>>;
     };
   };
+  forms: {
+    manifest(formKey: string): Promise<Record<string, unknown>>;
+    submit(formKey: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+  };
   functions: {
     invoke(slug: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
   };
@@ -655,6 +673,10 @@ export function createOpgClient(options: OpgClientOptions): OpgClient {
       schema: () => request<Record<string, unknown>>('/data/schema'),
       table: dataTable,
     },
+    forms: {
+      manifest: (formKey) => request<Record<string, unknown>>(`/forms/${encodeURIComponent(formKey)}/manifest`),
+      submit: (formKey, input) => request<Record<string, unknown>>(`/forms/${encodeURIComponent(formKey)}/responses`, { method: 'POST', body: input }),
+    },
     functions: {
       invoke: (slug, input) => request<Record<string, unknown>>(`/functions/${encodeURIComponent(slug)}/invoke`, { method: 'POST', body: input }),
     },
@@ -765,6 +787,24 @@ export function createOpgPlatformClient(options: OpgClientOptions): OpgPlatformC
           request(appPath(appId, `/feedbacks/${encodeURIComponent(feedbackId)}/comments`), { method: 'POST', body: input }),
         review: (appId, feedbackId, input) =>
           request(appPath(appId, `/feedbacks/${encodeURIComponent(feedbackId)}/review`), { method: 'POST', body: input }),
+      },
+      forms: {
+        list: (appId) => request(appPath(appId, '/forms')),
+        get: (appId, formId) => request(appPath(appId, `/forms/${encodeURIComponent(formId)}`)),
+        create: (appId, input) => request(appPath(appId, '/forms'), { method: 'POST', body: input }),
+        update: (appId, formId, input) => request(appPath(appId, `/forms/${encodeURIComponent(formId)}`), { method: 'PATCH', body: input }),
+        delete: (appId, formId) => request(appPath(appId, `/forms/${encodeURIComponent(formId)}`), { method: 'DELETE' }),
+        publish: (appId, formId) => request(appPath(appId, `/forms/${encodeURIComponent(formId)}/publish`), { method: 'POST', body: {} }),
+        responses: (appId, formId, query) => request(appPath(appId, `/forms/${encodeURIComponent(formId)}/responses`), { query }),
+        metrics: (appId, formId) => request(appPath(appId, `/forms/${encodeURIComponent(formId)}/metrics`)),
+        createQuestion: (appId, formId, input) =>
+          request(appPath(appId, `/forms/${encodeURIComponent(formId)}/questions`), { method: 'POST', body: input }),
+        updateQuestion: (appId, formId, questionId, input) =>
+          request(appPath(appId, `/forms/${encodeURIComponent(formId)}/questions/${encodeURIComponent(questionId)}`), { method: 'PATCH', body: input }),
+        deleteQuestion: (appId, formId, questionId) =>
+          request(appPath(appId, `/forms/${encodeURIComponent(formId)}/questions/${encodeURIComponent(questionId)}`), { method: 'DELETE' }),
+        reorderQuestions: (appId, formId, questionIds) =>
+          request(appPath(appId, `/forms/${encodeURIComponent(formId)}/questions/reorder`), { method: 'PATCH', body: { question_ids: questionIds } }),
       },
       analytics: {
         business: (appId, query) => request(appPath(appId, '/business-analytics'), { query }),

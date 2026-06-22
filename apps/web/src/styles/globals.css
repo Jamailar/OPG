@@ -3106,6 +3106,345 @@ code {
   padding-right: 2px;
 }
 
+.tenant-forms-workbench {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.form-list-panel,
+.form-editor-panel {
+  min-width: 0;
+}
+
+.form-list {
+  display: grid;
+  gap: 8px;
+}
+
+.form-list-item {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 12px;
+  text-align: left;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.form-list-item.active {
+  border-color: var(--primary-color);
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.form-list-item strong {
+  font-size: 14px;
+}
+
+.form-list-item span,
+.form-list-item small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.form-create-row,
+.form-source-option-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.form-editor-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.form-metric-summary {
+  margin-bottom: 16px;
+}
+
+.form-builder-section {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.form-builder-section .platform-section-head h4 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.form-builder-question-list {
+  display: grid;
+  gap: 10px;
+}
+
+.form-builder-question {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+}
+
+.form-builder-question.add-question {
+  background: transparent;
+}
+
+.form-builder-question-head {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 150px;
+  gap: 8px;
+  align-items: center;
+}
+
+.form-builder-question-head > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.form-builder-question-grid {
+  grid-template-columns: minmax(0, 160px) minmax(0, 1fr) auto;
+}
+
+.form-builder-option-lines {
+  display: grid;
+  gap: 6px;
+}
+
+.form-builder-option-lines span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.form-builder-option-lines textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.form-builder-question-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.form-source-options {
+  display: grid;
+  gap: 8px;
+}
+
+.form-source-option-row {
+  grid-template-columns: minmax(100px, 1fr) minmax(120px, 1.2fr) 76px auto auto auto auto;
+  margin-top: 0;
+}
+
+.form-source-option-row label,
+.checkbox-line {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.form-response-list {
+  display: grid;
+  gap: 8px;
+}
+
+.form-response-row {
+  display: grid;
+  gap: 6px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.form-response-row > div {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.form-response-row span,
+.form-response-row p {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.form-response-row p {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hosted-form-page {
+  min-height: 100vh;
+  margin: 0;
+  padding: 24px;
+  background: var(--hosted-form-bg);
+  color: var(--hosted-form-text);
+}
+
+.hosted-form-shell {
+  width: min(100%, 680px);
+  margin: 0 auto;
+}
+
+.hosted-form,
+.hosted-form-success {
+  display: grid;
+  gap: 20px;
+}
+
+.hosted-form header {
+  display: grid;
+  gap: 6px;
+}
+
+.hosted-form h1,
+.hosted-form-success h1 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.25;
+}
+
+.hosted-form header p,
+.hosted-form-success p {
+  margin: 0;
+  color: #6b7280;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.hosted-form-fields {
+  display: grid;
+  gap: 16px;
+}
+
+.hosted-form-field,
+.hosted-form-statement {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+}
+
+.hosted-form-field > span,
+.hosted-form-field legend,
+.hosted-form-statement strong {
+  color: var(--hosted-form-text);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.hosted-form-field small,
+.hosted-form-statement p {
+  margin: 0;
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.hosted-form-field input[type='text'],
+.hosted-form-field input[type='email'],
+.hosted-form-field input[type='url'],
+.hosted-form-field input[type='date'],
+.hosted-form-field input[type='number'],
+.hosted-form-field textarea {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  color: #111827;
+  font: inherit;
+}
+
+.hosted-form-field textarea {
+  padding: 10px 12px;
+  resize: vertical;
+}
+
+.hosted-form-choice,
+.hosted-form-nps {
+  display: grid;
+  gap: 10px;
+}
+
+.hosted-form-choice label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 34px;
+  font-size: 14px;
+}
+
+.hosted-form-check {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.hosted-form-nps > div {
+  display: grid;
+  grid-template-columns: repeat(11, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.hosted-form-nps button {
+  min-width: 0;
+  height: 38px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  color: #111827;
+  cursor: pointer;
+}
+
+.hosted-form-nps button.active {
+  border-color: var(--hosted-form-primary);
+  background: var(--hosted-form-primary);
+  color: #fff;
+}
+
+.hosted-form-submit {
+  min-height: 44px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--hosted-form-primary);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.hosted-form-submit:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
 .tenant-route-card-head {
   display: flex;
   justify-content: space-between;
@@ -7367,6 +7706,17 @@ table.table-sticky th {
 
   .acquisition-legend-row small {
     display: none;
+  }
+
+  .tenant-forms-workbench {
+    grid-template-columns: 1fr;
+  }
+
+  .form-editor-grid,
+  .form-builder-question-grid,
+  .form-builder-question-head,
+  .form-source-option-row {
+    grid-template-columns: 1fr;
   }
 
   .tenant-site-message-actions {

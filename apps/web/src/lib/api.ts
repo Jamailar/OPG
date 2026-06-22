@@ -3029,6 +3029,116 @@ export interface PlatformAcquisitionSummary {
   }>;
 }
 
+export type PlatformAppFormQuestionType =
+  | 'short_text'
+  | 'long_text'
+  | 'email'
+  | 'url'
+  | 'phone'
+  | 'number'
+  | 'single_select'
+  | 'multi_select'
+  | 'source_select'
+  | 'rating'
+  | 'nps'
+  | 'opinion_scale'
+  | 'boolean'
+  | 'consent'
+  | 'date'
+  | 'statement'
+  | 'hidden';
+
+export interface PlatformAppFormOption {
+  key: string;
+  label: string;
+  allow_free_text?: boolean;
+  sort_order?: number;
+}
+
+export interface PlatformAppFormQuestion {
+  id: string;
+  app_id: string;
+  form_id: string;
+  question_key: string;
+  type: PlatformAppFormQuestionType;
+  title: string;
+  description?: string;
+  required: boolean;
+  sort_order: number;
+  options: PlatformAppFormOption[];
+  validation?: Record<string, unknown>;
+  properties?: Record<string, unknown>;
+  visibility?: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PlatformAppFormMetrics {
+  responses: number;
+  users: number;
+  average_score?: number | null;
+  first_submitted_at?: string | null;
+  last_submitted_at?: string | null;
+  nps?: {
+    scored: number;
+    promoters: number;
+    passives: number;
+    detractors: number;
+    score?: number | null;
+  };
+}
+
+export interface PlatformAppFormItem {
+  id: string;
+  app_id: string;
+  form_key: string;
+  name: string;
+  description?: string;
+  form_type: 'SYSTEM_USER_SOURCE' | 'SYSTEM_NPS' | 'CUSTOM' | string;
+  status: 'DRAFT' | 'ACTIVE' | 'DELETED' | string;
+  title: string;
+  subtitle?: string;
+  submit_label?: string;
+  success_title?: string;
+  success_message?: string;
+  published_version_id?: string | null;
+  published_version?: number | null;
+  published_at?: string | null;
+  response_count?: number;
+  last_response_at?: string | null;
+  hosted_path?: string;
+  theme?: Record<string, unknown>;
+  settings?: Record<string, unknown>;
+  variables?: Record<string, unknown>;
+  endings?: unknown[];
+  notification?: Record<string, unknown>;
+  questions?: PlatformAppFormQuestion[];
+  logic_rules?: unknown[];
+  actions?: unknown[];
+  versions?: Array<Record<string, unknown>>;
+  metrics?: PlatformAppFormMetrics;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PlatformAppFormResponseItem {
+  id: string;
+  app_id: string;
+  form_id: string;
+  form_version_id?: string | null;
+  user_id?: string | null;
+  user_email?: string | null;
+  user_display_name?: string | null;
+  respondent_key?: string | null;
+  session_id?: string | null;
+  status: string;
+  score?: number | null;
+  score_label?: string | null;
+  answers: Array<Record<string, unknown>>;
+  submitted_at?: string;
+  created_at?: string;
+}
+
 export const platformApi = {
   getDeveloperSdkManifest: async (appSlug: string): Promise<OpgSdkManifest> => {
     const base = runtimeContext.apiBaseUrl.replace(/\/+$/, '');
@@ -5087,6 +5197,114 @@ export const platformApi = {
       page_size: number;
       items: PlatformAcquisitionUserSource[];
     };
+  },
+
+  listAppForms: async (appId: string) => {
+    const response = await apiClient.getClient().get(`/platform-admin/apps/${appId}/forms`);
+    return response.data as { items: PlatformAppFormItem[] };
+  },
+
+  createAppForm: async (
+    appId: string,
+    payload: {
+      name: string;
+      form_key?: string;
+      title?: string;
+      subtitle?: string;
+      description?: string;
+      submit_label?: string;
+      success_title?: string;
+      success_message?: string;
+      theme?: Record<string, unknown>;
+      settings?: Record<string, unknown>;
+    },
+  ) => {
+    const response = await apiClient.getClient().post(`/platform-admin/apps/${appId}/forms`, payload);
+    return response.data as { item: PlatformAppFormItem };
+  },
+
+  getAppForm: async (appId: string, formId: string) => {
+    const response = await apiClient.getClient().get(`/platform-admin/apps/${appId}/forms/${formId}`);
+    return response.data as { item: PlatformAppFormItem };
+  },
+
+  updateAppForm: async (appId: string, formId: string, payload: Partial<PlatformAppFormItem>) => {
+    const response = await apiClient.getClient().patch(`/platform-admin/apps/${appId}/forms/${formId}`, payload);
+    return response.data as { item: PlatformAppFormItem };
+  },
+
+  deleteAppForm: async (appId: string, formId: string) => {
+    const response = await apiClient.getClient().delete(`/platform-admin/apps/${appId}/forms/${formId}`);
+    return response.data as { deleted: boolean };
+  },
+
+  publishAppForm: async (appId: string, formId: string) => {
+    const response = await apiClient.getClient().post(`/platform-admin/apps/${appId}/forms/${formId}/publish`);
+    return response.data as { item: Record<string, unknown>; manifest: Record<string, unknown> };
+  },
+
+  listAppFormResponses: async (
+    appId: string,
+    formId: string,
+    params?: { page?: number; page_size?: number },
+  ) => {
+    const response = await apiClient.getClient().get(`/platform-admin/apps/${appId}/forms/${formId}/responses`, { params });
+    return response.data as {
+      total: number;
+      page: number;
+      page_size: number;
+      items: PlatformAppFormResponseItem[];
+    };
+  },
+
+  getAppFormMetrics: async (appId: string, formId: string) => {
+    const response = await apiClient.getClient().get(`/platform-admin/apps/${appId}/forms/${formId}/metrics`);
+    return response.data as PlatformAppFormMetrics;
+  },
+
+  createAppFormQuestion: async (
+    appId: string,
+    formId: string,
+    payload: {
+      question_key?: string;
+      type: PlatformAppFormQuestionType;
+      title: string;
+      description?: string;
+      required?: boolean;
+      sort_order?: number;
+      options?: PlatformAppFormOption[];
+      validation?: Record<string, unknown>;
+      properties?: Record<string, unknown>;
+      visibility?: Record<string, unknown>;
+    },
+  ) => {
+    const response = await apiClient.getClient().post(`/platform-admin/apps/${appId}/forms/${formId}/questions`, payload);
+    return response.data as { item: PlatformAppFormQuestion };
+  },
+
+  updateAppFormQuestion: async (
+    appId: string,
+    formId: string,
+    questionId: string,
+    payload: Partial<PlatformAppFormQuestion>,
+  ) => {
+    const response = await apiClient.getClient().patch(
+      `/platform-admin/apps/${appId}/forms/${formId}/questions/${questionId}`,
+      payload,
+    );
+    return response.data as { item: PlatformAppFormQuestion };
+  },
+
+  deleteAppFormQuestion: async (appId: string, formId: string, questionId: string) => {
+    const response = await apiClient.getClient().delete(`/platform-admin/apps/${appId}/forms/${formId}/questions/${questionId}`);
+    return response.data as { deleted: boolean };
+  },
+
+  reorderAppFormQuestions: async (appId: string, formId: string, questionIds: string[]) => {
+    const response = await apiClient.getClient().patch(`/platform-admin/apps/${appId}/forms/${formId}/questions/reorder`, {
+      question_ids: questionIds,
+    });
+    return response.data as { items: PlatformAppFormQuestion[] };
   },
 
   listAppSiteMessages: async (

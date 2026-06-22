@@ -126,6 +126,26 @@ opg platform feedbacks review \
   --json '{"action":"thanks","note":"有效反馈"}'
 ```
 
+管理内置和自定义表单：
+
+```bash
+opg platform forms list --app-id <app-id>
+opg platform forms get --app-id <app-id> --form-id user_source
+
+opg platform forms create \
+  --app-id <app-id> \
+  --json '{"name":"新用户调研","form_key":"new_user_survey","title":"新用户调研"}'
+
+opg platform forms question-create \
+  --app-id <app-id> \
+  --form-id <form-id> \
+  --json '{"type":"single_select","question_key":"role","title":"你的角色","required":true,"options":[{"key":"founder","label":"创始人"},{"key":"operator","label":"运营"}]}'
+
+opg platform forms publish --app-id <app-id> --form-id <form-id>
+opg platform forms responses --app-id <app-id> --form-id <form-id>
+opg platform forms metrics --app-id <app-id> --form-id nps
+```
+
 配置管理员通知：
 
 ```bash
@@ -272,6 +292,13 @@ opg mcp
 - `opg_platform_app_create`
 - `opg_platform_app_feedbacks_list`
 - `opg_platform_app_feedback_get`
+- `opg_platform_app_forms_list`
+- `opg_platform_app_form_get`
+- `opg_platform_app_form_create`
+- `opg_platform_app_form_publish`
+- `opg_platform_app_form_responses_list`
+- `opg_form_manifest_get`
+- `opg_form_response_submit`
 - `opg_platform_app_notification_channels_list`
 - `opg_platform_app_notification_channel_create`
 - `opg_platform_app_notification_channel_test`
