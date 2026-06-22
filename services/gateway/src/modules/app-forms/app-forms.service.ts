@@ -598,9 +598,9 @@ export class AppFormsService {
     const formManifest = asObject(manifest.form);
     const settings = asObject(formManifest.settings || form.settings_json);
     const token = this.extractAccessToken(request);
-    const authUser = await this.resolveOptionalAuthUser(token, settings, app.slug);
+    const authUser = await this.resolveOptionalAuthUser(token, app.slug);
     const userId = authUser?.id || authUser?.userId || null;
-    if (!userId && settings.allow_anonymous === false) {
+    if (!userId && this.requiresAuthenticatedSubmit(settings)) {
       throw new UnauthorizedException('login required');
     }
 
@@ -779,7 +779,7 @@ export class AppFormsService {
       submit_label: '保存',
       success_title: '已保存',
       success_message: '感谢反馈。',
-      settings: { embedded: true, allow_anonymous: false, replace_user_submission: true, system_key: 'user_source' },
+      settings: { embedded: true, allow_anonymous: true, replace_user_submission: true, system_key: 'user_source' },
       questions: [
         {
           question_key: 'source_key',
@@ -1245,18 +1245,21 @@ export class AppFormsService {
     return { value, label: null };
   }
 
-  private async resolveOptionalAuthUser(token: string | null, settings: Record<string, unknown>, appSlug: string) {
+  private async resolveOptionalAuthUser(token: string | null, appSlug: string) {
     if (!token) return null;
     try {
       const user = await this.authService.verifyAccessToken(token);
       if (String(user?.appSlug || '').trim().toLowerCase() !== appSlug.toLowerCase()) {
-        throw new UnauthorizedException('token app mismatch');
+        return null;
       }
       return user;
-    } catch (error) {
-      if (settings.allow_anonymous === false) throw error;
+    } catch {
       return null;
     }
+  }
+
+  private requiresAuthenticatedSubmit(settings: Record<string, unknown>) {
+    return settings.allow_anonymous === false || settings.allowAnonymous === false || settings.require_auth === true || settings.requireAuth === true;
   }
 
   private extractAccessToken(request?: any) {

@@ -33,9 +33,32 @@ function apiBase() {
   return runtimeContext.apiBaseUrl.replace(/\/+$/, '');
 }
 
-function authHeaders(): Record<string, string> {
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  const segment = token.split('.')[1];
+  if (!segment) return null;
+  try {
+    const padded = segment.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(segment.length / 4) * 4, '=');
+    return JSON.parse(atob(padded));
+  } catch {
+    return null;
+  }
+}
+
+function authHeaders(appSlug: string): Record<string, string> {
   const token = typeof window === 'undefined' ? '' : localStorage.getItem('access_token') || '';
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  if (!token) return {};
+  const payload = decodeJwtPayload(token);
+  const tokenAppSlug = String(payload?.appSlug || payload?.app_slug || '').trim().toLowerCase();
+  if (!tokenAppSlug || tokenAppSlug !== appSlug.trim().toLowerCase()) return {};
+  return { Authorization: `Bearer ${token}` };
+}
+
+function submitErrorMessage(message: string) {
+  const normalized = message.trim().toLowerCase();
+  if (normalized.includes('login required') || normalized.includes('token app mismatch') || normalized.includes('invalid access token')) {
+    return '请先在当前 App 登录后提交';
+  }
+  return message || '提交失败';
 }
 
 function isChoiceType(type: string) {
@@ -116,7 +139,7 @@ export default function HostedFormShell() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...authHeaders(),
+          ...authHeaders(appSlug),
         },
         body: JSON.stringify({
           answers,
@@ -132,7 +155,7 @@ export default function HostedFormShell() {
       setSubmitted(true);
       window.parent?.postMessage({ type: 'opg_form_submitted', form_key: formKey }, '*');
     } catch (submitError: any) {
-      setError(String(submitError?.message || '提交失败'));
+      setError(submitErrorMessage(String(submitError?.message || '')));
     } finally {
       setSubmitting(false);
     }
