@@ -17,3 +17,7 @@
 ## CLI synchronization
 
 - Every feature change must explicitly check whether `packages/cli`, `packages/sdk`, MCP tool schemas, and `docs/CLI_USAGE.md` need matching updates. If the backend or web UI exposes a new product capability, the CLI and SDK surface must either support it or the commit/PR must state why no CLI/SDK change is required.
+
+## UI information architecture
+
+- Tenant workspace inner pages must not use split-pane layouts. One page should serve one primary job: list pages show lists, detail pages show read-only details and data, and edit pages contain editing controls only.
