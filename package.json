@@ -1,6 +1,6 @@
 {
   "name": "opg-system",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "description": "一人集团系统：帮助一人公司快速构建 app 后端集群的前后端分离 monorepo。",
   "workspaces": [
