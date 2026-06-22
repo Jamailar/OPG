@@ -11,6 +11,7 @@ import {
 import { pickApiErrorMessage } from '@/lib/api-response';
 
 type Message = { type: 'success' | 'error'; text: string } | null;
+type FormPanelView = 'list' | 'detail' | 'edit';
 
 type FormDraft = {
   name: string;
@@ -162,6 +163,7 @@ function isOptionQuestion(type: PlatformAppFormQuestionType) {
 }
 
 export default function TenantFormsPanel({ appId, canWrite }: { appId: string; canWrite: boolean }) {
+  const [view, setView] = useState<FormPanelView>('list');
   const [forms, setForms] = useState<PlatformAppFormItem[]>([]);
   const [selectedFormId, setSelectedFormId] = useState('');
   const [selectedForm, setSelectedForm] = useState<PlatformAppFormItem | null>(null);
@@ -183,13 +185,14 @@ export default function TenantFormsPanel({ appId, canWrite }: { appId: string; c
     return `${window.location.origin}${selectedForm.hosted_path}`;
   }, [selectedForm?.hosted_path]);
 
-  const loadForms = async (preferredId?: string) => {
+  const loadForms = async (preferredId?: string | null) => {
     setLoading(true);
     try {
       const result = await platformApi.listAppForms(appId);
       const items = result.items || [];
       setForms(items);
-      const nextId = preferredId || selectedFormId || items[0]?.id || '';
+      const requestedId = preferredId === null ? '' : preferredId || selectedFormId;
+      const nextId = requestedId && items.some((item) => item.id === requestedId) ? requestedId : '';
       setSelectedFormId(nextId);
       if (!nextId) setSelectedForm(null);
     } catch (error) {
@@ -235,7 +238,12 @@ export default function TenantFormsPanel({ appId, canWrite }: { appId: string; c
   };
 
   useEffect(() => {
-    void loadForms();
+    setView('list');
+    setSelectedFormId('');
+    setSelectedForm(null);
+    setResponses([]);
+    setResponsesTotal(0);
+    void loadForms(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appId]);
 
@@ -259,6 +267,7 @@ export default function TenantFormsPanel({ appId, canWrite }: { appId: string; c
       setNewForm({ name: '', form_key: '' });
       setMessage({ type: 'success', text: '表单已创建' });
       await loadForms(result.item.id);
+      setView('edit');
     } catch (error) {
       setMessage({ type: 'error', text: pickApiErrorMessage(error, '创建表单失败') });
     } finally {
@@ -448,6 +457,103 @@ export default function TenantFormsPanel({ appId, canWrite }: { appId: string; c
     }
   };
 
+  const openDetail = (formId: string) => {
+    setSelectedFormId(formId);
+    setView('detail');
+  };
+
+  const backToList = () => {
+    setView('list');
+    setSelectedFormId('');
+    setSelectedForm(null);
+    setResponses([]);
+    setResponsesTotal(0);
+  };
+
+  const questionOptions = (question: PlatformAppFormQuestion) => {
+    if (question.type === 'source_select') {
+      return sourceOptions
+        .filter((option) => option.is_active)
+        .sort((left, right) => Number(left.sort_order || 0) - Number(right.sort_order || 0))
+        .map((option) => ({ key: option.key, label: option.label }));
+    }
+    return question.options || [];
+  };
+
+  const answerLabel = (answer: Record<string, unknown>) => {
+    const key = String(answer.question_key || '');
+    const question = selectedForm?.questions?.find((item) => item.question_key === key);
+    return question?.title || key || '答案';
+  };
+
+  const renderPreviewControl = (question: PlatformAppFormQuestion) => {
+    const options = questionOptions(question);
+    if (question.type === 'statement') {
+      return null;
+    }
+    if (question.type === 'long_text') {
+      return <textarea rows={3} disabled placeholder="长文本答案" />;
+    }
+    if (question.type === 'single_select' || question.type === 'source_select') {
+      return (
+        <select disabled defaultValue="">
+          <option value="">请选择</option>
+          {options.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
+        </select>
+      );
+    }
+    if (question.type === 'multi_select') {
+      return (
+        <div className="form-preview-options">
+          {options.map((option) => (
+            <label key={option.key}><input type="checkbox" disabled />{option.label}</label>
+          ))}
+        </div>
+      );
+    }
+    if (question.type === 'nps') {
+      return (
+        <div className="form-preview-scale">
+          {Array.from({ length: 11 }).map((_, index) => <span key={index}>{index}</span>)}
+        </div>
+      );
+    }
+    if (question.type === 'boolean' || question.type === 'consent') {
+      return <label className="form-preview-check"><input type="checkbox" disabled />是</label>;
+    }
+    if (question.type === 'rating' || question.type === 'opinion_scale' || question.type === 'number') {
+      return <input type="number" disabled placeholder="数字" />;
+    }
+    if (question.type === 'date') {
+      return <input type="date" disabled />;
+    }
+    return <input type={question.type === 'email' ? 'email' : question.type === 'url' ? 'url' : 'text'} disabled placeholder="短文本答案" />;
+  };
+
+  const renderFormPreview = () => {
+    if (!selectedForm) return null;
+    const questions = (selectedForm.questions || []).filter((question) => question.type !== 'hidden');
+    return (
+      <div className="form-preview-shell">
+        <div className="form-preview-head">
+          <h4>{selectedForm.title || selectedForm.name}</h4>
+          {selectedForm.subtitle ? <p>{selectedForm.subtitle}</p> : null}
+        </div>
+        <div className="form-preview-fields">
+          {questions.map((question) => (
+            <div className="form-preview-field" key={question.id}>
+              <label>{question.title}{question.required ? <span>*</span> : null}</label>
+              {question.description ? <small>{question.description}</small> : null}
+              {renderPreviewControl(question)}
+            </div>
+          ))}
+          {!questions.length ? <div className="loading">暂无问题</div> : null}
+        </div>
+        <button className="btn btn-sm" type="button" disabled>{selectedForm.submit_label || '提交'}</button>
+      </div>
+    );
+  };
+
   const renderQuestionEdit = (question: PlatformAppFormQuestion, index: number) => {
     const edit = questionEdits[question.id] || buildQuestionEdit(question);
     return (
@@ -516,67 +622,23 @@ export default function TenantFormsPanel({ appId, canWrite }: { appId: string; c
     );
   };
 
-  return (
-    <div className="tenant-forms-workbench">
-      {message && <div className={`alert ${message.type}`}>{message.text}</div>}
-      <section className="card form-list-panel">
-        <div className="platform-section-head">
-          <div>
-            <h3>表单</h3>
-            <p>{forms.length} 个表单</p>
-          </div>
-          <button className="btn btn-secondary btn-sm" type="button" onClick={() => void loadForms()} disabled={loading}>刷新</button>
-        </div>
-        <div className="form-list">
-          {forms.map((form) => (
-            <button
-              key={form.id}
-              type="button"
-              className={`form-list-item ${selectedFormId === form.id ? 'active' : ''}`}
-              onClick={() => setSelectedFormId(form.id)}
-            >
-              <strong>{form.name}</strong>
-              <span>{form.form_key}</span>
-              <small>{formTypeLabel(form.form_type)} · {form.response_count || 0} 次提交 · {form.published_version ? `v${form.published_version}` : '未发布'}</small>
-            </button>
-          ))}
-          {!forms.length && !loading ? <div className="loading">暂无表单</div> : null}
-        </div>
-        {canWrite && (
-          <div className="form-create-row">
-            <input
-              value={newForm.name}
-              onChange={(event) => setNewForm((prev) => ({ ...prev, name: event.target.value }))}
-              placeholder="新表单名称"
-              disabled={saving}
-            />
-            <input
-              value={newForm.form_key}
-              onChange={(event) => setNewForm((prev) => ({ ...prev, form_key: event.target.value }))}
-              placeholder="表单标识"
-              disabled={saving}
-            />
-            <button className="btn btn-sm" type="button" onClick={() => void createForm()} disabled={saving}>创建</button>
-          </div>
-        )}
-      </section>
-
-      <section className="card form-editor-panel">
+  if (view === 'detail') {
+    return (
+      <div className="tenant-forms-page">
+        {message && <div className={`alert ${message.type}`}>{message.text}</div>}
         {!selectedForm ? (
-          <div className="loading">选择一个表单</div>
+          <div className="loading">加载中...</div>
         ) : (
           <>
-            <div className="platform-section-head">
+            <div className="platform-section-head forms-page-head">
               <div>
+                <button className="btn btn-secondary btn-sm" type="button" onClick={backToList}>返回</button>
                 <h3>{selectedForm.name}</h3>
-                <p>{formTypeLabel(selectedForm.form_type)} · {formStatusLabel(selectedForm.status)}</p>
+                <p>{formTypeLabel(selectedForm.form_type)} · {formStatusLabel(selectedForm.status)} · {selectedForm.published_version ? `v${selectedForm.published_version}` : '未发布'}</p>
               </div>
               <div className="tenant-card-actions">
-                {hostedUrl && (
-                  <a className="btn btn-secondary btn-sm" href={hostedUrl} target="_blank" rel="noreferrer">打开</a>
-                )}
-                <button className="btn btn-secondary btn-sm" type="button" onClick={() => void publishForm()} disabled={!canWrite || saving}>发布</button>
-                <button className="btn btn-sm" type="button" onClick={() => void saveForm()} disabled={!canWrite || saving}>保存</button>
+                {hostedUrl ? <a className="btn btn-secondary btn-sm" href={hostedUrl} target="_blank" rel="noreferrer">打开</a> : null}
+                {canWrite ? <button className="btn btn-sm" type="button" onClick={() => setView('edit')}>编辑</button> : null}
               </div>
             </div>
 
@@ -595,32 +657,106 @@ export default function TenantFormsPanel({ appId, canWrite }: { appId: string; c
               </div>
             </div>
 
-            <div className="tenant-feedback-filter-row form-editor-grid">
-              <label>
-                <span>名称</span>
-                <input value={formDraft.name} onChange={(event) => setFormDraft((prev) => ({ ...prev, name: event.target.value }))} disabled={!canWrite || saving} />
-              </label>
-              <label>
-                <span>表单标识</span>
-                <input value={formDraft.form_key} onChange={(event) => setFormDraft((prev) => ({ ...prev, form_key: event.target.value }))} disabled={!canWrite || saving || selectedForm.form_type !== 'CUSTOM'} />
-              </label>
-              <label>
-                <span>标题</span>
-                <input value={formDraft.title} onChange={(event) => setFormDraft((prev) => ({ ...prev, title: event.target.value }))} disabled={!canWrite || saving} />
-              </label>
-              <label>
-                <span>副标题</span>
-                <input value={formDraft.subtitle} onChange={(event) => setFormDraft((prev) => ({ ...prev, subtitle: event.target.value }))} disabled={!canWrite || saving} />
-              </label>
-              <label>
-                <span>按钮</span>
-                <input value={formDraft.submit_label} onChange={(event) => setFormDraft((prev) => ({ ...prev, submit_label: event.target.value }))} disabled={!canWrite || saving} />
-              </label>
-              <label>
-                <span>成功文案</span>
-                <input value={formDraft.success_title} onChange={(event) => setFormDraft((prev) => ({ ...prev, success_title: event.target.value }))} disabled={!canWrite || saving} />
-              </label>
+            <section className="form-builder-section">
+              <div className="platform-section-head">
+                <div>
+                  <h4>提交数据</h4>
+                  <p>{responsesTotal} 条</p>
+                </div>
+              </div>
+              <div className="form-response-table-wrap">
+                <table className="form-response-table">
+                  <thead>
+                    <tr>
+                      <th>提交人</th>
+                      <th>答案</th>
+                      <th>分数</th>
+                      <th>时间</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {responses.map((response) => (
+                      <tr key={response.id}>
+                        <td>{response.user_display_name || response.user_email || response.respondent_key || '匿名'}</td>
+                        <td>{(response.answers || []).slice(0, 4).map((answer) => `${answerLabel(answer)}：${answerValue(answer)}`).join(' · ') || '-'}</td>
+                        <td>{response.score ?? '-'}</td>
+                        <td>{formatDateTime(response.submitted_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {!responses.length ? <div className="loading">暂无提交记录</div> : null}
+              </div>
+            </section>
+
+            <section className="form-builder-section">
+              <div className="platform-section-head">
+                <div>
+                  <h4>表单预览</h4>
+                  <p>{selectedForm.questions?.length || 0} 个问题</p>
+                </div>
+              </div>
+              {renderFormPreview()}
+            </section>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  if (view === 'edit') {
+    return (
+      <div className="tenant-forms-page">
+        {message && <div className={`alert ${message.type}`}>{message.text}</div>}
+        {!selectedForm ? (
+          <div className="loading">加载中...</div>
+        ) : (
+          <>
+            <div className="platform-section-head forms-page-head">
+              <div>
+                <button className="btn btn-secondary btn-sm" type="button" onClick={() => setView('detail')}>返回</button>
+                <h3>编辑：{selectedForm.name}</h3>
+                <p>{formTypeLabel(selectedForm.form_type)} · {formStatusLabel(selectedForm.status)}</p>
+              </div>
+              <div className="tenant-card-actions">
+                <button className="btn btn-secondary btn-sm" type="button" onClick={() => void publishForm()} disabled={!canWrite || saving}>发布</button>
+                <button className="btn btn-sm" type="button" onClick={() => void saveForm()} disabled={!canWrite || saving}>保存</button>
+              </div>
             </div>
+
+            <section className="form-builder-section">
+              <div className="platform-section-head">
+                <div>
+                  <h4>基础信息</h4>
+                </div>
+              </div>
+              <div className="tenant-feedback-filter-row form-editor-grid">
+                <label>
+                  <span>名称</span>
+                  <input value={formDraft.name} onChange={(event) => setFormDraft((prev) => ({ ...prev, name: event.target.value }))} disabled={!canWrite || saving} />
+                </label>
+                <label>
+                  <span>表单标识</span>
+                  <input value={formDraft.form_key} onChange={(event) => setFormDraft((prev) => ({ ...prev, form_key: event.target.value }))} disabled={!canWrite || saving || selectedForm.form_type !== 'CUSTOM'} />
+                </label>
+                <label>
+                  <span>标题</span>
+                  <input value={formDraft.title} onChange={(event) => setFormDraft((prev) => ({ ...prev, title: event.target.value }))} disabled={!canWrite || saving} />
+                </label>
+                <label>
+                  <span>副标题</span>
+                  <input value={formDraft.subtitle} onChange={(event) => setFormDraft((prev) => ({ ...prev, subtitle: event.target.value }))} disabled={!canWrite || saving} />
+                </label>
+                <label>
+                  <span>按钮</span>
+                  <input value={formDraft.submit_label} onChange={(event) => setFormDraft((prev) => ({ ...prev, submit_label: event.target.value }))} disabled={!canWrite || saving} />
+                </label>
+                <label>
+                  <span>成功文案</span>
+                  <input value={formDraft.success_title} onChange={(event) => setFormDraft((prev) => ({ ...prev, success_title: event.target.value }))} disabled={!canWrite || saving} />
+                </label>
+              </div>
+            </section>
 
             {selectedForm.form_type === 'SYSTEM_USER_SOURCE' && (
               <section className="form-builder-section">
@@ -653,7 +789,7 @@ export default function TenantFormsPanel({ appId, canWrite }: { appId: string; c
                   })}
                   {canWrite && (
                     <div className="form-source-option-row form-source-option-new">
-                        <input value={sourceOptionDraft.key} placeholder="来源标识" onChange={(event) => setSourceOptionDraft((prev) => ({ ...prev, key: event.target.value }))} disabled={saving} />
+                      <input value={sourceOptionDraft.key} placeholder="来源标识" onChange={(event) => setSourceOptionDraft((prev) => ({ ...prev, key: event.target.value }))} disabled={saving} />
                       <input value={sourceOptionDraft.label} placeholder="名称" onChange={(event) => setSourceOptionDraft((prev) => ({ ...prev, label: event.target.value }))} disabled={saving} />
                       <input value={sourceOptionDraft.sort_order} placeholder="排序" onChange={(event) => setSourceOptionDraft((prev) => ({ ...prev, sort_order: event.target.value }))} disabled={saving} />
                       <label><input type="checkbox" checked={sourceOptionDraft.is_active} onChange={(event) => setSourceOptionDraft((prev) => ({ ...prev, is_active: event.target.checked }))} disabled={saving} />启用</label>
@@ -710,30 +846,71 @@ export default function TenantFormsPanel({ appId, canWrite }: { appId: string; c
                 </div>
               )}
             </section>
-
-            <section className="form-builder-section">
-              <div className="platform-section-head">
-                <div>
-                  <h4>提交记录</h4>
-                  <p>{responsesTotal} 条</p>
-                </div>
-              </div>
-              <div className="form-response-list">
-                {responses.map((response) => (
-                  <div className="form-response-row" key={response.id}>
-                    <div>
-                      <strong>{response.user_display_name || response.user_email || response.respondent_key || '匿名'}</strong>
-                      <span>{formatDateTime(response.submitted_at)}</span>
-                    </div>
-                    <p>{(response.answers || []).slice(0, 4).map((answer) => `${String(answer.question_key || '')}: ${answerValue(answer)}`).join(' · ')}</p>
-                  </div>
-                ))}
-                {!responses.length ? <div className="loading">暂无提交记录</div> : null}
-              </div>
-            </section>
           </>
         )}
-      </section>
+      </div>
+    );
+  }
+
+  return (
+    <div className="tenant-forms-page">
+      {message && <div className={`alert ${message.type}`}>{message.text}</div>}
+      <div className="platform-section-head forms-page-head">
+        <div>
+          <h3>表单</h3>
+          <p>{forms.length} 个表单</p>
+        </div>
+        <button className="btn btn-secondary btn-sm" type="button" onClick={() => void loadForms(null)} disabled={loading}>刷新</button>
+      </div>
+
+      {canWrite && (
+        <div className="form-create-row">
+          <input
+            value={newForm.name}
+            onChange={(event) => setNewForm((prev) => ({ ...prev, name: event.target.value }))}
+            placeholder="新表单名称"
+            disabled={saving}
+          />
+          <input
+            value={newForm.form_key}
+            onChange={(event) => setNewForm((prev) => ({ ...prev, form_key: event.target.value }))}
+            placeholder="表单标识"
+            disabled={saving}
+          />
+          <button className="btn btn-sm" type="button" onClick={() => void createForm()} disabled={saving}>创建</button>
+        </div>
+      )}
+
+      <div className="form-list-table-wrap">
+        <table className="form-list-table">
+          <thead>
+            <tr>
+              <th>名称</th>
+              <th>类型</th>
+              <th>状态</th>
+              <th>提交</th>
+              <th>最近提交</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {forms.map((form) => (
+              <tr key={form.id} onClick={() => openDetail(form.id)}>
+                <td>
+                  <strong>{form.name}</strong>
+                  <span>{form.form_key}</span>
+                </td>
+                <td>{formTypeLabel(form.form_type)}</td>
+                <td>{form.published_version ? `v${form.published_version}` : formStatusLabel(form.status)}</td>
+                <td>{form.response_count || 0}</td>
+                <td>{formatDateTime(form.last_response_at)}</td>
+                <td><button className="btn btn-secondary btn-xs" type="button" onClick={(event) => { event.stopPropagation(); openDetail(form.id); }}>查看</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!forms.length && !loading ? <div className="loading">暂无表单</div> : null}
+      </div>
     </div>
   );
 }
