@@ -7,6 +7,7 @@
 参考 Appwrite 的产品面：Auth、Databases、Storage、Functions、Messaging、Realtime、Sites、自托管、SDK 和 API；OPG 只吸收这些能力的控制面和协议思想，不直接把系统做成通用数据库编辑器。
 
 App 自定义构建面的详细升级计划见：[APP_CONSTRUCTION_PLANE_UPGRADE_PLAN.md](./APP_CONSTRUCTION_PLANE_UPGRADE_PLAN.md)。
+App 表单系统的产品架构方案见：[APP_FORMS_ARCHITECTURE.md](./APP_FORMS_ARCHITECTURE.md)。
 
 ## 推荐方案
 
